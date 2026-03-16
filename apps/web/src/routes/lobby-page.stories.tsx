@@ -65,19 +65,13 @@ const MockLobbyFetch = ({ children }: { readonly children: ReactNode }) => {
 };
 
 const baseAuthValue: AppAuthContextValue = {
-  devProfiles: [
-    { id: 'dev-alice', displayName: 'Alice Quartz' },
-    { id: 'dev-bob', displayName: 'Bob Onyx' },
-  ],
   getAccessTokenSilently: async () => 'dev:storybook',
   isAuthenticated: true,
-  isDevBypassEnabled: true,
   isGuestAuthEnabled: false,
   isLoading: false,
   loginWithRedirect: async () => undefined,
   logout: () => undefined,
   signInAsGuest: () => undefined,
-  signInAsDevProfile: () => undefined,
   user: {
     id: 'dev-alice',
     displayName: 'Alice Quartz',
@@ -113,7 +107,6 @@ export const GuestEntry: Story = {
         value={{
           ...baseAuthValue,
           isAuthenticated: false,
-          isDevBypassEnabled: false,
           isGuestAuthEnabled: true,
           user: undefined,
         }}

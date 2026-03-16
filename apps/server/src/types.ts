@@ -80,6 +80,7 @@ export interface RoomStore {
   readonly createRoom: (input: CreateRoomInput) => Promise<RoomRecord>;
   readonly getRoom: (roomId: string) => Promise<RoomRecord | null>;
   readonly listRooms: () => Promise<readonly RoomRecord[]>;
+  readonly deleteRoom: (roomId: string) => Promise<void>;
   readonly updateRoom: (room: RoomRecord) => Promise<void>;
   readonly close?: () => Promise<void> | void;
 }

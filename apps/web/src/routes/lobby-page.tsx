@@ -36,16 +36,13 @@ const roomStatusLabel = (status: PublicRoomSummary['status']): string => {
 export const LobbyPage = () => {
   const navigate = useNavigate();
   const {
-    devProfiles,
     getAccessTokenSilently,
     isAuthenticated,
-    isDevBypassEnabled,
     isGuestAuthEnabled,
     isLoading,
     loginWithRedirect,
     logout,
     signInAsGuest,
-    signInAsDevProfile,
     user,
   } = useAppAuth();
   const [roomConfig, setRoomConfig] = useState<RoomConfig>({
@@ -146,24 +143,10 @@ export const LobbyPage = () => {
                 }}
                 type="button"
               >
-                {isDevBypassEnabled ? 'Quick sign in' : 'Sign in'}
+                Sign in
               </button>
             ) : null}
           </div>
-          {isDevBypassEnabled ? (
-            <div className="mt-4 flex flex-wrap gap-2">
-              {devProfiles.map((profile) => (
-                <button
-                  key={profile.id}
-                  className="rounded-full border border-sky-200/15 px-3 py-2 text-xs text-sky-100 transition hover:border-sky-200/35 hover:bg-sky-100/5"
-                  onClick={() => signInAsDevProfile(profile.id)}
-                  type="button"
-                >
-                  {profile.displayName}
-                </button>
-              ))}
-            </div>
-          ) : null}
         </header>
 
         {isGuestAuthEnabled && !isAuthenticated ? (

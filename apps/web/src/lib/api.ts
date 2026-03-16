@@ -92,3 +92,20 @@ export const startRoom = async (token: string, roomId: string): Promise<PublicRo
 
   return payload.room;
 };
+
+export const bootRoomParticipant = async (
+  token: string,
+  roomId: string,
+  userId: string,
+): Promise<PublicRoomState> => {
+  const payload = await requestJson<{ readonly room: PublicRoomState }>(
+    `/api/rooms/${roomId}/boot`,
+    token,
+    {
+      method: 'POST',
+      body: JSON.stringify({ userId }),
+    },
+  );
+
+  return payload.room;
+};

@@ -16,40 +16,21 @@ export interface AppUser {
   readonly id: string;
 }
 
-export interface DevUserProfile {
-  readonly displayName: string;
-  readonly id: string;
-}
-
 export interface AppAuthContextValue {
-  readonly devProfiles: readonly DevUserProfile[];
   readonly getAccessTokenSilently: () => Promise<string>;
   readonly isAuthenticated: boolean;
-  readonly isDevBypassEnabled: boolean;
   readonly isGuestAuthEnabled: boolean;
   readonly isLoading: boolean;
   readonly loginWithRedirect: () => Promise<void>;
   readonly logout: () => void;
   readonly signInAsGuest: (displayName: string) => void;
-  readonly signInAsDevProfile: (profileId: string) => void;
   readonly user: AppUser | undefined;
 }
 
-const devProfiles = [
-  { id: 'dev-alice', displayName: 'Alice Quartz' },
-  { id: 'dev-bob', displayName: 'Bob Onyx' },
-  { id: 'dev-carmen', displayName: 'Carmen Topaz' },
-  { id: 'dev-diego', displayName: 'Diego Jade' },
-] as const satisfies readonly DevUserProfile[];
-
 const authContext = createContext<AppAuthContextValue | null>(null);
-const devSessionKey = 'splendor.dev-auth-profile';
 const guestNameStorageKey = 'splendor.guest-auth-name';
 const guestIdStorageKey = 'splendor.guest-auth-id';
 const config = readWebConfig();
-
-const createDevToken = (profile: DevUserProfile): string =>
-  `dev:${profile.id}:${encodeURIComponent(profile.displayName)}`;
 
 const createAppUser = (
   id: string,
@@ -69,10 +50,8 @@ const useAuth0Adapter = (): AppAuthContextValue => {
 
   return useMemo(
     () => ({
-      devProfiles,
       getAccessTokenSilently: async () => auth0.getAccessTokenSilently(),
       isAuthenticated: auth0.isAuthenticated,
-      isDevBypassEnabled: false,
       isGuestAuthEnabled: false,
       isLoading: auth0.isLoading,
       loginWithRedirect: async () => {
@@ -82,7 +61,6 @@ const useAuth0Adapter = (): AppAuthContextValue => {
         void auth0.logout({ logoutParams: { returnTo: window.location.origin } });
       },
       signInAsGuest: () => undefined,
-      signInAsDevProfile: () => undefined,
       user: auth0.user?.sub
         ? createAppUser(
             auth0.user.sub,
@@ -101,58 +79,6 @@ const Auth0AppAuthProvider = ({ children }: { readonly children: ReactNode }) =>
   return <authContext.Provider value={value}>{children}</authContext.Provider>;
 };
 
-const DevAuthProvider = ({ children }: { readonly children: ReactNode }) => {
-  const [profileId, setProfileId] = useState<string | null>(null);
-
-  useEffect(() => {
-    const savedProfileId = window.sessionStorage.getItem(devSessionKey);
-
-    setProfileId(savedProfileId);
-  }, []);
-
-  const selectedProfile = devProfiles.find((profile) => profile.id === profileId);
-
-  const value = useMemo<AppAuthContextValue>(
-    () => ({
-      devProfiles,
-      getAccessTokenSilently: async () => {
-        if (!selectedProfile) {
-          throw new Error('Select a development player first.');
-        }
-
-        return createDevToken(selectedProfile);
-      },
-      isAuthenticated: selectedProfile !== undefined,
-      isDevBypassEnabled: true,
-      isGuestAuthEnabled: false,
-      isLoading: false,
-      loginWithRedirect: async () => {
-        if (!selectedProfile) {
-          const defaultProfile = devProfiles[0];
-
-          window.sessionStorage.setItem(devSessionKey, defaultProfile.id);
-          setProfileId(defaultProfile.id);
-        }
-      },
-      logout: () => {
-        window.sessionStorage.removeItem(devSessionKey);
-        setProfileId(null);
-      },
-      signInAsGuest: () => undefined,
-      signInAsDevProfile: (nextProfileId: string) => {
-        window.sessionStorage.setItem(devSessionKey, nextProfileId);
-        setProfileId(nextProfileId);
-      },
-      user: selectedProfile
-        ? createAppUser(selectedProfile.id, selectedProfile.displayName)
-        : undefined,
-    }),
-    [selectedProfile],
-  );
-
-  return <authContext.Provider value={value}>{children}</authContext.Provider>;
-};
-
 const GuestAuthProvider = ({ children }: { readonly children: ReactNode }) => {
   const [guestUser, setGuestUser] = useState<AppUser | undefined>(undefined);
 
@@ -167,7 +93,6 @@ const GuestAuthProvider = ({ children }: { readonly children: ReactNode }) => {
 
   const value = useMemo<AppAuthContextValue>(
     () => ({
-      devProfiles,
       getAccessTokenSilently: async () => {
         if (!guestUser) {
           throw new Error('Enter your name first.');
@@ -176,7 +101,6 @@ const GuestAuthProvider = ({ children }: { readonly children: ReactNode }) => {
         return createGuestToken(guestUser);
       },
       isAuthenticated: guestUser !== undefined,
-      isDevBypassEnabled: false,
       isGuestAuthEnabled: true,
       isLoading: false,
       loginWithRedirect: async () => undefined,
@@ -199,7 +123,6 @@ const GuestAuthProvider = ({ children }: { readonly children: ReactNode }) => {
         window.localStorage.setItem(guestNameStorageKey, normalizedName);
         setGuestUser(createAppUser(id, normalizedName));
       },
-      signInAsDevProfile: () => undefined,
       user: guestUser,
     }),
     [guestUser],
@@ -209,10 +132,6 @@ const GuestAuthProvider = ({ children }: { readonly children: ReactNode }) => {
 };
 
 export const AppAuthProvider = ({ children }: { readonly children: ReactNode }) => {
-  if (config.isDevAuthBypassEnabled) {
-    return <DevAuthProvider>{children}</DevAuthProvider>;
-  }
-
   if (!config.auth0Enabled || config.isGuestAuthEnabled) {
     return <GuestAuthProvider>{children}</GuestAuthProvider>;
   }

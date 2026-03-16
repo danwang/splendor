@@ -2,6 +2,7 @@ import { type FastifyInstance, type FastifyRequest } from 'fastify';
 import { z } from 'zod';
 
 import {
+  bootRoomParticipant,
   joinRoom,
   startRoomGame,
   toPublicRoomState,
@@ -20,6 +21,10 @@ const createRoomSchema = z.object({
     z.literal(20),
     z.literal(21),
   ]),
+});
+
+const bootParticipantSchema = z.object({
+  userId: z.string().min(1),
 });
 
 const getBearerToken = (request: FastifyRequest): string | null => {
@@ -137,6 +142,33 @@ export const registerRoomRoutes = (app: FastifyInstance): void => {
       await app.serverDependencies.roomStore.updateRoom(started.room);
       await app.broadcastRoomState(roomId);
       return { room: toPublicRoomState(started.room) };
+    } catch (error) {
+      return reply
+        .code(401)
+        .send({ error: error instanceof Error ? error.message : 'Unauthorized.' });
+    }
+  });
+
+  app.post('/api/rooms/:roomId/boot', async (request, reply) => {
+    try {
+      const user = await authenticateRequest(app, request);
+      const roomId = (request.params as { roomId: string }).roomId;
+      const room = await app.serverDependencies.roomStore.getRoom(roomId);
+
+      if (!room) {
+        return reply.code(404).send({ error: 'Room not found.' });
+      }
+
+      const body = bootParticipantSchema.parse(request.body);
+      const result = bootRoomParticipant(room, user, body.userId);
+
+      if (!result.ok) {
+        return reply.code(400).send({ error: result.message });
+      }
+
+      await app.serverDependencies.roomStore.updateRoom(result.room);
+      await app.broadcastRoomState(roomId);
+      return { room: toPublicRoomState(result.room) };
     } catch (error) {
       return reply
         .code(401)

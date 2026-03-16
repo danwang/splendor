@@ -102,6 +102,40 @@ export const startRoomGame = (
   };
 };
 
+export const bootRoomParticipant = (
+  room: RoomRecord,
+  hostUser: AuthenticatedUser,
+  targetUserId: string,
+): { readonly ok: true; readonly room: RoomRecord } | { readonly ok: false; readonly message: string } => {
+  if (room.hostUserId !== hostUser.id) {
+    return { ok: false, message: 'Only the host can remove players.' };
+  }
+
+  if (room.game) {
+    return { ok: false, message: 'Players can only be removed before the game starts.' };
+  }
+
+  if (targetUserId === room.hostUserId) {
+    return { ok: false, message: 'The host cannot remove themselves.' };
+  }
+
+  const participantExists = room.participants.some((participant) => participant.userId === targetUserId);
+
+  if (!participantExists) {
+    return { ok: false, message: 'Player not found in this room.' };
+  }
+
+  return {
+    ok: true,
+    room: {
+      ...room,
+      participants: room.participants.filter((participant) => participant.userId !== targetUserId),
+      stateVersion: room.stateVersion + 1,
+      updatedAt: Date.now(),
+    },
+  };
+};
+
 export const applyRoomMove = (
   room: RoomRecord,
   user: AuthenticatedUser,

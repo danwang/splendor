@@ -5,18 +5,15 @@ import { MockAppAuthProvider, type AppAuthContextValue } from '../lib/auth.js';
 import { RoomPage } from './room-page.js';
 
 const guestAuthValue: AppAuthContextValue = {
-  devProfiles: [],
   getAccessTokenSilently: async () => {
     throw new Error('No guest token yet.');
   },
   isAuthenticated: false,
-  isDevBypassEnabled: false,
   isGuestAuthEnabled: true,
   isLoading: false,
   loginWithRedirect: async () => undefined,
   logout: () => undefined,
   signInAsGuest: () => undefined,
-  signInAsDevProfile: () => undefined,
   user: undefined,
 };
 

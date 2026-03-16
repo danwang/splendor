@@ -16,14 +16,9 @@ const envSchema = z
       .optional()
       .transform((value) => value === 'true')
       .default(false),
-    DEV_AUTH_BYPASS: z
-      .enum(['true', 'false'])
-      .optional()
-      .transform((value) => value === 'true')
-      .default(false),
   })
   .superRefine((environment, context) => {
-    if (environment.DEV_AUTH_BYPASS || !environment.AUTH0_ENABLED) {
+    if (!environment.AUTH0_ENABLED) {
       return;
     }
 

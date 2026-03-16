@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { randomInt } from 'node:crypto';
 
 import { type CreateRoomInput, type RoomRecord, type RoomStore } from '../types.js';
 
@@ -55,12 +55,24 @@ export const createInMemoryRoomStore = (
 
   cleanupHandle.unref?.();
 
+  const createRoomId = (): string => {
+    for (let attempt = 0; attempt < 32; attempt += 1) {
+      const roomId = randomInt(1_000, 1_000_000).toString();
+
+      if (!rooms.has(roomId)) {
+        return roomId;
+      }
+    }
+
+    throw new Error('Failed to allocate a unique room ID.');
+  };
+
   return {
     createRoom: async (input: CreateRoomInput): Promise<RoomRecord> => {
       const timestamp = now();
       const room: RoomRecord = {
         createdAt: timestamp,
-        id: randomUUID(),
+        id: createRoomId(),
         config: input.config,
         hostUserId: input.host.id,
         participants: [
@@ -84,6 +96,9 @@ export const createInMemoryRoomStore = (
     listRooms: async (): Promise<readonly RoomRecord[]> => {
       cleanupExpiredRooms();
       return [...rooms.values()].sort((left, right) => right.updatedAt - left.updatedAt);
+    },
+    deleteRoom: async (roomId: string): Promise<void> => {
+      rooms.delete(roomId);
     },
     updateRoom: async (room: RoomRecord): Promise<void> => {
       rooms.set(room.id, {

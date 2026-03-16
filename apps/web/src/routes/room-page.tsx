@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 
 import { RoomScene } from '../components/room-scene.js';
-import { joinRoom, loadRoom, startRoom } from '../lib/api.js';
+import { bootRoomParticipant, joinRoom, loadRoom, startRoom } from '../lib/api.js';
 import { useAppAuth } from '../lib/auth.js';
 import { connectToRoomSocket, sendSocketMessage } from '../lib/socket.js';
 import { type PublicRoomState, type ServerMessage } from '../lib/types.js';
@@ -15,16 +15,13 @@ export const RoomPage = () => {
   const { roomId = '' } = useParams();
   const navigate = useNavigate();
   const {
-    devProfiles,
     getAccessTokenSilently,
     isAuthenticated,
-    isDevBypassEnabled,
     isGuestAuthEnabled,
     isLoading,
     loginWithRedirect,
     logout,
     signInAsGuest,
-    signInAsDevProfile,
     user,
   } = useAppAuth();
   const [room, setRoom] = useState<PublicRoomState | null>(null);
@@ -265,6 +262,21 @@ export const RoomPage = () => {
     }
   };
 
+  const handleBootParticipant = async (userId: string): Promise<void> => {
+    try {
+      setIsWorking(true);
+      setErrorMessage(null);
+      const token = await getAccessTokenSilently();
+      const nextRoom = await bootRoomParticipant(token, roomId, userId);
+
+      setRoom(nextRoom);
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : 'Failed to remove player.');
+    } finally {
+      setIsWorking(false);
+    }
+  };
+
   if (isLoading) {
     return <div className="min-h-screen bg-stone-950 text-stone-100" />;
   }
@@ -306,23 +318,9 @@ export const RoomPage = () => {
                 }}
                 type="button"
               >
-                {isDevBypassEnabled ? 'Quick sign in' : 'Sign in'}
+                Sign in
               </button>
             )}
-            {isDevBypassEnabled ? (
-              <div className="flex flex-wrap justify-center gap-2">
-                {devProfiles.map((profile) => (
-                  <button
-                    key={profile.id}
-                    className="rounded-full border border-sky-200/15 px-3 py-2 text-left text-xs text-sky-100 transition hover:border-sky-200/35 hover:bg-sky-100/5"
-                    onClick={() => signInAsDevProfile(profile.id)}
-                    type="button"
-                  >
-                    {profile.displayName}
-                  </button>
-                ))}
-              </div>
-            ) : null}
             <Link
               className="rounded-full border border-white/12 bg-white/5 px-5 py-3 text-stone-100 transition hover:border-white/20 hover:bg-white/8"
               to="/"
@@ -338,16 +336,16 @@ export const RoomPage = () => {
   return (
     <RoomScene
       currentUserId={currentUserId}
-      devProfiles={devProfiles}
       errorMessage={errorMessage}
-      isDevBypassEnabled={isDevBypassEnabled}
       isSocketConnected={isSocketConnected}
       isWorking={isWorking}
+      onBootParticipant={(userId) => {
+        void handleBootParticipant(userId);
+      }}
       onJoinRoom={() => {
         void handleJoinRoom();
       }}
       onLogout={() => logout()}
-      onSelectDevProfile={signInAsDevProfile}
       onStartGame={() => {
         void handleStartGame();
       }}

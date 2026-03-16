@@ -8,13 +8,6 @@ import {
 import { type RoomSceneProps } from './room-scene.js';
 import { type PublicRoomState } from '../lib/types.js';
 
-export const devProfiles = [
-  { id: 'dev-alice', displayName: 'Alice Quartz' },
-  { id: 'dev-bob', displayName: 'Bob Onyx' },
-  { id: 'dev-carmen', displayName: 'Carmen Topaz' },
-  { id: 'dev-diego', displayName: 'Diego Jade' },
-] as const;
-
 const players = [
   { id: 'dev-alice', displayName: 'Alice Quartz' },
   { id: 'dev-bob', displayName: 'Bob Onyx' },
@@ -215,14 +208,12 @@ export const withNoGoldReserve = (): GameState => {
 
 export const baseArgs: RoomSceneProps = {
   currentUserId: 'dev-alice',
-  devProfiles,
   errorMessage: null,
-  isDevBypassEnabled: true,
   isSocketConnected: true,
   isWorking: false,
+  onBootParticipant: () => undefined,
   onJoinRoom: () => undefined,
   onLogout: () => undefined,
-  onSelectDevProfile: () => undefined,
   onStartGame: () => undefined,
   onSubmitMove: () => undefined,
   room: createRoom(baseGame),
