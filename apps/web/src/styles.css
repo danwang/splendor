@@ -1,0 +1,82 @@
+@import "tailwindcss";
+
+:root {
+  color: #f6efe3;
+  background: #0b0d12;
+  font-family: "Avenir Next", "Segoe UI", sans-serif;
+  color-scheme: dark;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+  background: #0b0d12;
+}
+
+.font-serif {
+  font-family: "Iowan Old Style", "Palatino Linotype", "Book Antiqua", Georgia, serif;
+}
+
+button,
+input,
+select {
+  font: inherit;
+}
+
+code {
+  font-family: "SFMono-Regular", "Cascadia Code", "Liberation Mono", monospace;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+@keyframes player-waiting-sheen {
+  0% {
+    transform: translateX(-140%) skewX(-18deg);
+    opacity: 0;
+  }
+
+  20% {
+    opacity: 0.18;
+  }
+
+  55% {
+    opacity: 0.22;
+  }
+
+  100% {
+    transform: translateX(420%) skewX(-18deg);
+    opacity: 0;
+  }
+}
+
+@keyframes player-waiting-dot {
+  0%,
+  100% {
+    opacity: 0.45;
+    transform: scale(0.88);
+  }
+
+  50% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.player-waiting-sheen {
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(125, 211, 252, 0.05),
+    rgba(125, 211, 252, 0.18),
+    rgba(125, 211, 252, 0.05),
+    transparent
+  );
+  animation: player-waiting-sheen 2.4s ease-in-out infinite;
+}
+
+.player-waiting-dot {
+  animation: player-waiting-dot 1.35s ease-in-out infinite;
+}

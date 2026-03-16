@@ -1,0 +1,72 @@
+import { type GameState, type Move, type SeatCount, type TargetScore } from '@splendor/game-engine';
+
+export interface AuthenticatedUser {
+  readonly id: string;
+  readonly displayName: string;
+}
+
+export type TokenVerifier = (token: string) => Promise<AuthenticatedUser>;
+
+export interface RoomConfig {
+  readonly seatCount: SeatCount;
+  readonly targetScore: TargetScore;
+}
+
+export interface RoomParticipant {
+  readonly userId: string;
+  readonly displayName: string;
+}
+
+export interface RoomRecord {
+  readonly createdAt: number;
+  readonly id: string;
+  readonly config: RoomConfig;
+  readonly hostUserId: string;
+  readonly participants: readonly RoomParticipant[];
+  readonly stateVersion: number;
+  readonly game: GameState | null;
+  readonly updatedAt: number;
+}
+
+export interface PublicRoomState {
+  readonly id: string;
+  readonly config: RoomConfig;
+  readonly hostUserId: string;
+  readonly participants: readonly RoomParticipant[];
+  readonly stateVersion: number;
+  readonly game: GameState | null;
+  readonly status: 'waiting' | 'in_progress' | 'finished';
+}
+
+export type ClientMessage = {
+  readonly type: 'submit-move';
+  readonly move: Move;
+};
+
+export type ServerMessage =
+  | {
+      readonly type: 'room-state';
+      readonly room: PublicRoomState;
+    }
+  | {
+      readonly type: 'error';
+      readonly message: string;
+    };
+
+export interface CreateRoomInput {
+  readonly host: AuthenticatedUser;
+  readonly config: RoomConfig;
+}
+
+export interface ServerDependencies {
+  readonly verifyAccessToken: TokenVerifier;
+  readonly roomStore: RoomStore;
+  readonly makeSeed: () => string;
+}
+
+export interface RoomStore {
+  readonly createRoom: (input: CreateRoomInput) => Promise<RoomRecord>;
+  readonly getRoom: (roomId: string) => Promise<RoomRecord | null>;
+  readonly updateRoom: (room: RoomRecord) => Promise<void>;
+  readonly close?: () => Promise<void> | void;
+}

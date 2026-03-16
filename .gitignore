@@ -1,0 +1,14 @@
+node_modules
+**/node_modules
+dist
+**/dist
+storybook-static
+**/storybook-static
+coverage
+.DS_Store
+*.tsbuildinfo
+**/*.tsbuildinfo
+packages/*/vitest.config.js
+packages/*/vitest.config.js.map
+packages/*/vitest.config.d.ts
+.env
