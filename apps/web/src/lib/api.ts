@@ -1,5 +1,5 @@
 import { readWebConfig } from './config.js';
-import { type PublicRoomState, type RoomConfig } from './types.js';
+import { type PublicRoomState, type PublicRoomSummary, type RoomConfig } from './types.js';
 
 const config = readWebConfig();
 
@@ -43,6 +43,21 @@ export const createRoom = async (
   });
 
   return payload.room;
+};
+
+export const listRooms = async (): Promise<readonly PublicRoomSummary[]> => {
+  const response = await fetch(`${config.apiBaseUrl}/api/rooms`);
+
+  if (!response.ok) {
+    const payload = (await response.json().catch(() => null)) as
+      | { readonly error?: string }
+      | null;
+
+    throw new Error(payload?.error ?? `Request failed with status ${response.status}.`);
+  }
+
+  const payload = (await response.json()) as { readonly rooms: readonly PublicRoomSummary[] };
+  return payload.rooms;
 };
 
 export const loadRoom = async (token: string, roomId: string): Promise<PublicRoomState> => {

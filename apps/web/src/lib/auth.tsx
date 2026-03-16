@@ -44,8 +44,8 @@ const devProfiles = [
 
 const authContext = createContext<AppAuthContextValue | null>(null);
 const devSessionKey = 'splendor.dev-auth-profile';
-const guestNameSessionKey = 'splendor.guest-auth-name';
-const guestIdSessionKey = 'splendor.guest-auth-id';
+const guestNameStorageKey = 'splendor.guest-auth-name';
+const guestIdStorageKey = 'splendor.guest-auth-id';
 const config = readWebConfig();
 
 const createDevToken = (profile: DevUserProfile): string =>
@@ -157,8 +157,8 @@ const GuestAuthProvider = ({ children }: { readonly children: ReactNode }) => {
   const [guestUser, setGuestUser] = useState<AppUser | undefined>(undefined);
 
   useEffect(() => {
-    const savedName = window.sessionStorage.getItem(guestNameSessionKey)?.trim();
-    const savedId = window.sessionStorage.getItem(guestIdSessionKey)?.trim();
+    const savedName = window.localStorage.getItem(guestNameStorageKey)?.trim();
+    const savedId = window.localStorage.getItem(guestIdStorageKey)?.trim();
 
     if (savedName && savedId) {
       setGuestUser(createAppUser(savedId, savedName));
@@ -181,8 +181,8 @@ const GuestAuthProvider = ({ children }: { readonly children: ReactNode }) => {
       isLoading: false,
       loginWithRedirect: async () => undefined,
       logout: () => {
-        window.sessionStorage.removeItem(guestNameSessionKey);
-        window.sessionStorage.removeItem(guestIdSessionKey);
+        window.localStorage.removeItem(guestNameStorageKey);
+        window.localStorage.removeItem(guestIdStorageKey);
         setGuestUser(undefined);
       },
       signInAsGuest: (displayName: string) => {
@@ -192,11 +192,11 @@ const GuestAuthProvider = ({ children }: { readonly children: ReactNode }) => {
           return;
         }
 
-        const existingId = window.sessionStorage.getItem(guestIdSessionKey);
+        const existingId = window.localStorage.getItem(guestIdStorageKey);
         const id = existingId && existingId.length > 0 ? existingId : crypto.randomUUID();
 
-        window.sessionStorage.setItem(guestIdSessionKey, id);
-        window.sessionStorage.setItem(guestNameSessionKey, normalizedName);
+        window.localStorage.setItem(guestIdStorageKey, id);
+        window.localStorage.setItem(guestNameStorageKey, normalizedName);
         setGuestUser(createAppUser(id, normalizedName));
       },
       signInAsDevProfile: () => undefined,

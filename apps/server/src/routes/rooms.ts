@@ -1,7 +1,12 @@
 import { type FastifyInstance, type FastifyRequest } from 'fastify';
 import { z } from 'zod';
 
-import { joinRoom, startRoomGame, toPublicRoomState } from '../services/game-service.js';
+import {
+  joinRoom,
+  startRoomGame,
+  toPublicRoomState,
+  toPublicRoomSummary,
+} from '../services/game-service.js';
 import { type AuthenticatedUser } from '../types.js';
 
 const createRoomSchema = z.object({
@@ -42,6 +47,16 @@ const authenticateRequest = async (
 };
 
 export const registerRoomRoutes = (app: FastifyInstance): void => {
+  app.get('/api/rooms', async () => {
+    const rooms = await app.serverDependencies.roomStore.listRooms();
+
+    return {
+      rooms: rooms
+        .filter((room) => (room.game ? room.game.status !== 'finished' : true))
+        .map(toPublicRoomSummary),
+    };
+  });
+
   app.post('/api/rooms', async (request, reply) => {
     try {
       const user = await authenticateRequest(app, request);

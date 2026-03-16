@@ -8,6 +8,9 @@ import { useAppAuth } from '../lib/auth.js';
 import { connectToRoomSocket, sendSocketMessage } from '../lib/socket.js';
 import { type PublicRoomState, type ServerMessage } from '../lib/types.js';
 
+const reconnectDelayForAttempt = (attempt: number): number =>
+  Math.min(1_000 * 2 ** attempt, 10_000);
+
 export const RoomPage = () => {
   const { roomId = '' } = useParams();
   const {
@@ -27,7 +30,9 @@ export const RoomPage = () => {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [guestDisplayName, setGuestDisplayName] = useState('');
   const [isWorking, setIsWorking] = useState(false);
+  const [isSocketConnected, setIsSocketConnected] = useState(false);
   const socketRef = useRef<WebSocket | null>(null);
+  const reconnectTimerRef = useRef<number | null>(null);
   const currentUserId = user?.id;
 
   useEffect(() => {
@@ -65,7 +70,30 @@ export const RoomPage = () => {
       return;
     }
 
+    setIsSocketConnected(false);
     let isCancelled = false;
+    let reconnectAttempt = 0;
+
+    const clearReconnectTimer = (): void => {
+      if (reconnectTimerRef.current !== null) {
+        window.clearTimeout(reconnectTimerRef.current);
+        reconnectTimerRef.current = null;
+      }
+    };
+
+    const scheduleReconnect = (): void => {
+      if (isCancelled) {
+        return;
+      }
+
+      clearReconnectTimer();
+      const delayMs = reconnectDelayForAttempt(reconnectAttempt);
+      reconnectAttempt += 1;
+      setErrorMessage('Connection lost. Reconnecting…');
+      reconnectTimerRef.current = window.setTimeout(() => {
+        void connect();
+      }, delayMs);
+    };
 
     const connect = async (): Promise<void> => {
       try {
@@ -78,6 +106,11 @@ export const RoomPage = () => {
         const socket = connectToRoomSocket(
           roomId,
           token,
+          () => {
+            reconnectAttempt = 0;
+            setIsSocketConnected(true);
+            setErrorMessage(null);
+          },
           (message: ServerMessage) => {
             if (message.type === 'room-state') {
               setRoom(message.room);
@@ -89,13 +122,18 @@ export const RoomPage = () => {
           },
           () => {
             socketRef.current = null;
+            setIsSocketConnected(false);
+            scheduleReconnect();
           },
         );
 
         socketRef.current = socket;
       } catch (error) {
         if (!isCancelled) {
-          setErrorMessage(error instanceof Error ? error.message : 'Failed to connect to room.');
+          setErrorMessage(
+            error instanceof Error ? error.message : 'Failed to connect to room.',
+          );
+          scheduleReconnect();
         }
       }
     };
@@ -104,6 +142,8 @@ export const RoomPage = () => {
 
     return () => {
       isCancelled = true;
+      clearReconnectTimer();
+      setIsSocketConnected(false);
       socketRef.current?.close();
       socketRef.current = null;
     };
@@ -227,6 +267,7 @@ export const RoomPage = () => {
       devProfiles={devProfiles}
       errorMessage={errorMessage}
       isDevBypassEnabled={isDevBypassEnabled}
+      isSocketConnected={isSocketConnected}
       isWorking={isWorking}
       onJoinRoom={() => {
         void handleJoinRoom();

@@ -38,6 +38,17 @@ export interface PublicRoomState {
   readonly status: 'waiting' | 'in_progress' | 'finished';
 }
 
+export interface PublicRoomSummary {
+  readonly id: string;
+  readonly config: RoomConfig;
+  readonly hostUserId: string;
+  readonly participants: readonly RoomParticipant[];
+  readonly stateVersion: number;
+  readonly status: 'waiting' | 'in_progress' | 'finished';
+  readonly createdAt: number;
+  readonly updatedAt: number;
+}
+
 export type ClientMessage = {
   readonly type: 'submit-move';
   readonly move: Move;
@@ -67,6 +78,7 @@ export interface ServerDependencies {
 export interface RoomStore {
   readonly createRoom: (input: CreateRoomInput) => Promise<RoomRecord>;
   readonly getRoom: (roomId: string) => Promise<RoomRecord | null>;
+  readonly listRooms: () => Promise<readonly RoomRecord[]>;
   readonly updateRoom: (room: RoomRecord) => Promise<void>;
   readonly close?: () => Promise<void> | void;
 }

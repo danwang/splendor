@@ -78,6 +78,31 @@ describe('server app', () => {
     expect(response.json().room.participants).toHaveLength(1);
   });
 
+  it('lists discoverable rooms without requiring authentication', async () => {
+    const app = await createApp({ dependencies: { verifyAccessToken } });
+
+    apps.push(app);
+
+    const created = await app.inject({
+      method: 'POST',
+      url: '/api/rooms',
+      headers: authHeader('host'),
+      payload: { seatCount: 3, targetScore: 15 },
+    });
+
+    expect(created.statusCode).toBe(201);
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/rooms',
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json().rooms).toHaveLength(1);
+    expect(response.json().rooms[0].participants).toHaveLength(1);
+    expect(response.json().rooms[0].config.seatCount).toBe(3);
+  });
+
   it('rejects an invalid move without changing room state', async () => {
     const app = await createApp({
       dependencies: {

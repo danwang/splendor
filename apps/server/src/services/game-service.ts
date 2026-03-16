@@ -2,6 +2,7 @@ import { reduceGame, setupGameWithSeed } from '@splendor/game-engine';
 
 import {
   type AuthenticatedUser,
+  type PublicRoomSummary,
   type PublicRoomState,
   type RoomParticipant,
   type RoomRecord,
@@ -20,6 +21,17 @@ export const toPublicRoomState = (room: RoomRecord): PublicRoomState => ({
   stateVersion: room.stateVersion,
   game: room.game,
   status: room.game ? room.game.status : 'waiting',
+});
+
+export const toPublicRoomSummary = (room: RoomRecord): PublicRoomSummary => ({
+  id: room.id,
+  config: room.config,
+  hostUserId: room.hostUserId,
+  participants: room.participants,
+  stateVersion: room.stateVersion,
+  status: room.game ? room.game.status : 'waiting',
+  createdAt: room.createdAt,
+  updatedAt: room.updatedAt,
 });
 
 export const joinRoom = (

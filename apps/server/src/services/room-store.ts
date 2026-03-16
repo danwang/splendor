@@ -81,6 +81,10 @@ export const createInMemoryRoomStore = (
       cleanupExpiredRooms();
       return rooms.get(roomId) ?? null;
     },
+    listRooms: async (): Promise<readonly RoomRecord[]> => {
+      cleanupExpiredRooms();
+      return [...rooms.values()].sort((left, right) => right.updatedAt - left.updatedAt);
+    },
     updateRoom: async (room: RoomRecord): Promise<void> => {
       rooms.set(room.id, {
         ...room,

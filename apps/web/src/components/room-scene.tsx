@@ -351,6 +351,7 @@ export interface RoomSceneProps {
   readonly initialSelection?: Selection;
   readonly initialResultsVisible?: boolean;
   readonly isDevBypassEnabled: boolean;
+  readonly isSocketConnected: boolean;
   readonly isWorking: boolean;
   readonly onJoinRoom: () => void;
   readonly onLogout: () => void;
@@ -369,6 +370,7 @@ export const RoomScene = ({
   initialSelection = null,
   initialResultsVisible,
   isDevBypassEnabled,
+  isSocketConnected,
   isWorking,
   onJoinRoom,
   onLogout,
@@ -396,6 +398,7 @@ export const RoomScene = ({
     room.hostUserId === currentUserId &&
     room.status === 'waiting' &&
     room.participants.length >= 2;
+  const canSubmitRealtimeMoves = room?.status === 'in_progress' ? isSocketConnected : true;
 
   useEffect(() => {
     setSelection(initialSelection);
@@ -537,7 +540,10 @@ export const RoomScene = ({
   const renderMarketSheet = (card: Card) => {
     const purchaseMove = interaction?.purchaseVisibleByCardId[card.id];
     const reserveMove = interaction?.reserveVisibleByCardId[card.id];
-    const isActionable = interaction?.isCurrentUsersTurn && game?.turn.kind === 'main-action';
+    const isActionable =
+      interaction?.isCurrentUsersTurn &&
+      game?.turn.kind === 'main-action' &&
+      canSubmitRealtimeMoves;
     const autoPayment = activePlayer ? getAutoPayment(activePlayer, card) : null;
     const effectiveCost = activePlayer ? getCardEffectiveCost(activePlayer, card) : createEmptyPaymentSelection().tokens;
     const manualSelectedCount = totalSelectedPayment(purchaseSelection);
@@ -765,7 +771,10 @@ export const RoomScene = ({
 
   const renderReservedSheet = (card: Card) => {
     const purchaseMove = interaction?.purchaseReservedByCardId[card.id];
-    const isActionable = interaction?.isCurrentUsersTurn && game?.turn.kind === 'main-action';
+    const isActionable =
+      interaction?.isCurrentUsersTurn &&
+      game?.turn.kind === 'main-action' &&
+      canSubmitRealtimeMoves;
 
     return (
       <div className="space-y-4">
@@ -791,10 +800,14 @@ export const RoomScene = ({
   const renderDeckSheet = (tier: CardTier) => {
     const reserveMove = interaction?.deckMovesByTier[tier];
     const goldAvailable = (game?.bank.gold ?? 0) > 0;
+    const isActionable =
+      interaction?.isCurrentUsersTurn &&
+      game?.turn.kind === 'main-action' &&
+      canSubmitRealtimeMoves;
 
     return (
       <div className="space-y-3">
-        {reserveMove ? (
+        {reserveMove && isActionable ? (
           <>
             <button
               className={primaryButtonClass}
@@ -840,7 +853,7 @@ export const RoomScene = ({
               <button
                 key={`bank-select-${color}`}
                 className={`relative rounded-full px-1.5 py-1 ${selectedCount > 0 ? `outline-4 outline-offset-2 ${tokenRingStyles[color]}` : ''}`}
-                disabled={(game?.bank[color] ?? 0) === 0}
+                disabled={(game?.bank[color] ?? 0) === 0 || !canSubmitRealtimeMoves}
                 onClick={() => toggleBankColor(color)}
                 type="button"
               >
@@ -858,7 +871,7 @@ export const RoomScene = ({
 
       <button
         className={primaryButtonClass}
-        disabled={!selectedBankMove}
+        disabled={!selectedBankMove || !canSubmitRealtimeMoves}
         onClick={() => {
           if (selectedBankMove) {
             submitAndReset(selectedBankMove);
@@ -959,7 +972,7 @@ export const RoomScene = ({
 
         <button
           className={primaryButtonClass}
-          disabled={discardSelection.length !== requiredCount || !discardMove}
+          disabled={discardSelection.length !== requiredCount || !discardMove || !canSubmitRealtimeMoves}
           onClick={() => {
             if (discardMove) {
               submitAndReset(discardMove);
@@ -986,7 +999,7 @@ export const RoomScene = ({
               className={`rounded-[1rem] text-left transition ${
                 claimMove ? 'active:scale-[0.98]' : 'cursor-default opacity-35 saturate-50'
               }`}
-              disabled={!claimMove}
+              disabled={!claimMove || !canSubmitRealtimeMoves}
               onClick={() => {
                 if (claimMove) {
                   submitAndReset(claimMove);
@@ -1002,6 +1015,7 @@ export const RoomScene = ({
       {interaction?.skipNobleMove ? (
         <button
           className={subtleButtonClass}
+          disabled={!canSubmitRealtimeMoves}
           onClick={() => {
             if (interaction.skipNobleMove) {
               submitAndReset(interaction.skipNobleMove);
@@ -1075,6 +1089,7 @@ export const RoomScene = ({
                     <SplendorCard
                       key={`reserved-detail-${card.id}`}
                       card={card}
+                      disabled={!canSubmitRealtimeMoves}
                       onPress={() => setSelection({ type: 'reserved-card', cardId: card.id })}
                       size="tiny"
                     />
@@ -1229,6 +1244,11 @@ export const RoomScene = ({
               </div>
               <p className="truncate text-[12px] leading-4 text-stone-300">{currentTurnCopy}</p>
             </div>
+            {!canSubmitRealtimeMoves ? (
+              <span className="rounded-full border border-sky-300/20 bg-sky-300/8 px-2 py-1 text-[10px] uppercase tracking-[0.16em] text-sky-100">
+                Connecting
+              </span>
+            ) : null}
             <button
               className="rounded-full border border-white/12 bg-white/5 px-2.5 py-1 text-[11px] font-medium text-stone-100 transition hover:border-white/20 hover:bg-white/8"
               onClick={() => setSelection({ type: 'menu' })}
@@ -1301,11 +1321,17 @@ export const RoomScene = ({
                     className={`flex w-full items-center gap-2 rounded-[0.8rem] text-left transition ${
                       selection?.type === 'bank' ? 'bg-white/5' : ''
                     } ${
-                      interaction?.isCurrentUsersTurn && game.turn.kind === 'main-action'
+                      interaction?.isCurrentUsersTurn &&
+                      game.turn.kind === 'main-action' &&
+                      canSubmitRealtimeMoves
                         ? 'active:scale-[0.995]'
                         : ''
                     }`}
-                    disabled={!interaction?.isCurrentUsersTurn || game.turn.kind !== 'main-action'}
+                    disabled={
+                      !interaction?.isCurrentUsersTurn ||
+                      game.turn.kind !== 'main-action' ||
+                      !canSubmitRealtimeMoves
+                    }
                     onClick={() => openBankSelection()}
                     type="button"
                   >
@@ -1335,7 +1361,11 @@ export const RoomScene = ({
                         <section key={`tier-${tier}`} className="px-0.5">
                           <div className="grid grid-cols-5 gap-1.5">
                             <DeckCard
-                              disabled={!interaction?.isCurrentUsersTurn || game.turn.kind !== 'main-action'}
+                              disabled={
+                                !interaction?.isCurrentUsersTurn ||
+                                game.turn.kind !== 'main-action' ||
+                                !canSubmitRealtimeMoves
+                              }
                               isSelected={selection?.type === 'deck' && selection.tier === tier}
                               onPress={() => setSelection({ type: 'deck', tier })}
                               remainingCount={game.decks[tierKey].length}
@@ -1346,6 +1376,7 @@ export const RoomScene = ({
                               <SplendorCard
                                 key={card.id}
                                 card={card}
+                                disabled={!canSubmitRealtimeMoves}
                                 isSelected={selection?.type === 'market-card' && selection.cardId === card.id}
                                 onPress={() => setSelection({ type: 'market-card', cardId: card.id })}
                                 size="compact"

@@ -217,6 +217,7 @@ export const baseArgs: RoomSceneProps = {
   devProfiles,
   errorMessage: null,
   isDevBypassEnabled: true,
+  isSocketConnected: true,
   isWorking: false,
   onJoinRoom: () => undefined,
   onLogout: () => undefined,

@@ -19,11 +19,13 @@ const createSocketUrl = (roomId: string, token: string): string => {
 export const connectToRoomSocket = (
   roomId: string,
   token: string,
+  onOpen: () => void,
   onMessage: (message: ServerMessage) => void,
   onClose: () => void,
 ): WebSocket => {
   const socket = new WebSocket(createSocketUrl(roomId, token));
 
+  socket.addEventListener('open', onOpen);
   socket.addEventListener('message', (event) => {
     onMessage(JSON.parse(event.data) as ServerMessage);
   });

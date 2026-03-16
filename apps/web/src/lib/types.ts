@@ -20,6 +20,17 @@ export interface PublicRoomState {
   readonly status: 'waiting' | 'in_progress' | 'finished';
 }
 
+export interface PublicRoomSummary {
+  readonly id: string;
+  readonly config: RoomConfig;
+  readonly hostUserId: string;
+  readonly participants: readonly RoomParticipant[];
+  readonly stateVersion: number;
+  readonly status: 'waiting' | 'in_progress' | 'finished';
+  readonly createdAt: number;
+  readonly updatedAt: number;
+}
+
 export type ServerMessage =
   | {
       readonly type: 'room-state';
