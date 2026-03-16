@@ -16,6 +16,7 @@ const toPlayerIdentity = (participant: RoomParticipant) => ({
 export const toPublicRoomState = (room: RoomRecord): PublicRoomState => ({
   id: room.id,
   config: room.config,
+  connectedUserIds: [],
   hostUserId: room.hostUserId,
   participants: room.participants,
   stateVersion: room.stateVersion,

@@ -14,6 +14,8 @@ export interface SocketLike {
   };
 }
 
+type SocketConnection = SocketLike | { readonly socket?: SocketLike };
+
 const parseSocketMessage = (raw: string) => {
   try {
     return clientMessageSchema.parse(JSON.parse(raw));
@@ -22,33 +24,90 @@ const parseSocketMessage = (raw: string) => {
   }
 };
 
-const sendMessage = (socket: SocketLike, message: ServerMessage): void => {
-  socket.send(JSON.stringify(message));
+const resolveSocket = (connection: SocketConnection): SocketLike | null => {
+  if ('send' in connection && typeof connection.send === 'function') {
+    return connection;
+  }
+
+  if ('socket' in connection && connection.socket) {
+    return connection.socket;
+  }
+
+  return null;
 };
 
+const sendMessage = (socket: SocketLike, message: ServerMessage): boolean => {
+  try {
+    console.debug('[server-room-socket] send', {
+      type: message.type,
+      ...(message.type === 'room-state'
+        ? {
+            roomId: message.room.id,
+            stateVersion: message.room.stateVersion,
+            connectedUserIds: message.room.connectedUserIds,
+          }
+        : {
+            message: message.message,
+          }),
+    });
+    socket.send(JSON.stringify(message));
+    return true;
+  } catch (error) {
+    console.debug('[server-room-socket] send:failed', {
+      error: error instanceof Error ? error.message : 'unknown',
+    });
+    return false;
+  }
+};
+
+const getConnectedUserIds = (
+  connections: Map<string, Map<SocketLike, string>>,
+  roomId: string,
+): readonly string[] => [...new Set([...(connections.get(roomId)?.values() ?? [])])];
+
 export const broadcastRoomState = (
-  connections: Map<string, Set<SocketLike>>,
+  connections: Map<string, Map<SocketLike, string>>,
   roomId: string,
   room: RoomRecord,
 ): void => {
   const message: ServerMessage = {
     type: 'room-state',
-    room: toPublicRoomState(room),
+    room: {
+      ...toPublicRoomState(room),
+      connectedUserIds: getConnectedUserIds(connections, roomId),
+    },
   };
 
-  (connections.get(roomId) ?? new Set()).forEach((socket) => {
-    sendMessage(socket, message);
+  const roomConnections = connections.get(roomId) ?? new Map();
+
+  roomConnections.forEach((_, socket) => {
+    const sent = sendMessage(socket, message);
+
+    if (!sent) {
+      roomConnections.delete(socket);
+    }
   });
+
+  if (roomConnections.size === 0) {
+    connections.delete(roomId);
+  } else {
+    connections.set(roomId, roomConnections);
+  }
 };
 
 export const submitRoomMoveFromSocket = async (
   app: FastifyInstance,
-  connections: Map<string, Set<SocketLike>>,
+  connections: Map<string, Map<SocketLike, string>>,
   roomId: string,
   user: AuthenticatedUser,
   move: Move,
   replySocket: SocketLike,
 ): Promise<void> => {
+  console.debug('[server-room-socket] move:received', {
+    roomId,
+    userId: user.id,
+    moveType: move.type,
+  });
   const currentRoom = await app.serverDependencies.roomStore.getRoom(roomId);
 
   if (!currentRoom) {
@@ -75,43 +134,55 @@ export const submitRoomMoveFromSocket = async (
 
 export const registerGameSocket = (
   app: FastifyInstance,
-  connections: Map<string, Set<SocketLike>>,
+  connections: Map<string, Map<SocketLike, string>>,
   authenticateSocket: (token: string | undefined) => Promise<AuthenticatedUser>,
 ): void => {
   app.get(
     '/ws/rooms/:roomId',
     { websocket: true },
     async (connection, request) => {
+      const socket = resolveSocket(connection);
       const roomId = (request.params as { roomId: string }).roomId;
       const token = (request.query as { token?: string }).token;
 
       try {
+        console.debug('[server-room-socket] connect:begin', {
+          roomId,
+          hasToken: Boolean(token),
+        });
+
+        if (!socket) {
+          throw new Error('Websocket connection missing socket instance.');
+        }
+
         const user = await authenticateSocket(token);
         const room = await app.serverDependencies.roomStore.getRoom(roomId);
 
         if (!room) {
-          sendMessage(connection.socket, {
+          sendMessage(socket, {
             type: 'error',
             message: 'Room not found.',
           });
-          connection.socket.close();
+          socket.close();
           return;
         }
 
-        const roomConnections = connections.get(roomId) ?? new Set();
+        const roomConnections = connections.get(roomId) ?? new Map();
 
-        roomConnections.add(connection.socket);
+        roomConnections.set(socket, user.id);
         connections.set(roomId, roomConnections);
-        sendMessage(connection.socket, {
-          type: 'room-state',
-          room: toPublicRoomState(room),
+        console.debug('[server-room-socket] connect:open', {
+          roomId,
+          userId: user.id,
+          connectedUserIds: getConnectedUserIds(connections, roomId),
         });
+        broadcastRoomState(connections, roomId, room);
 
-        connection.socket.on('message', async (raw: { readonly toString: () => string }) => {
+        socket.on('message', async (raw: { readonly toString: () => string }) => {
           const parsed = parseSocketMessage(raw.toString());
 
           if (!parsed) {
-            sendMessage(connection.socket, {
+            sendMessage(socket, {
               type: 'error',
               message: 'Invalid websocket message.',
             });
@@ -124,29 +195,41 @@ export const registerGameSocket = (
             roomId,
             user,
             parsed.move as Move,
-            connection.socket,
+            socket,
           );
         });
 
-        connection.socket.on('close', () => {
+        socket.on('close', () => {
+          console.debug('[server-room-socket] close', {
+            roomId,
+            userId: user.id,
+          });
           const sockets = connections.get(roomId);
 
           if (!sockets) {
             return;
           }
 
-          sockets.delete(connection.socket);
+          sockets.delete(socket);
 
           if (sockets.size === 0) {
             connections.delete(roomId);
+          } else if (room) {
+            broadcastRoomState(connections, roomId, room);
           }
         });
       } catch (error) {
-        sendMessage(connection.socket, {
-          type: 'error',
-          message: error instanceof Error ? error.message : 'Unauthorized websocket connection.',
+        console.debug('[server-room-socket] connect:failed', {
+          roomId,
+          error: error instanceof Error ? error.message : 'unknown',
         });
-        connection.socket.close();
+        if (socket) {
+          sendMessage(socket, {
+            type: 'error',
+            message: error instanceof Error ? error.message : 'Unauthorized websocket connection.',
+          });
+          socket.close();
+        }
       }
     },
   );

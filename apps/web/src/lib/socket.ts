@@ -21,7 +21,8 @@ export const connectToRoomSocket = (
   token: string,
   onOpen: () => void,
   onMessage: (message: ServerMessage) => void,
-  onClose: () => void,
+  onClose: (event: CloseEvent) => void,
+  onError: () => void,
 ): WebSocket => {
   const socket = new WebSocket(createSocketUrl(roomId, token));
 
@@ -30,6 +31,7 @@ export const connectToRoomSocket = (
     onMessage(JSON.parse(event.data) as ServerMessage);
   });
   socket.addEventListener('close', onClose);
+  socket.addEventListener('error', onError);
 
   return socket;
 };

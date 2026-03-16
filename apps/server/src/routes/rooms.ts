@@ -109,6 +109,7 @@ export const registerRoomRoutes = (app: FastifyInstance): void => {
       }
 
       await app.serverDependencies.roomStore.updateRoom(joined.room);
+      await app.broadcastRoomState(roomId);
       return { room: toPublicRoomState(joined.room) };
     } catch (error) {
       return reply
@@ -134,6 +135,7 @@ export const registerRoomRoutes = (app: FastifyInstance): void => {
       }
 
       await app.serverDependencies.roomStore.updateRoom(started.room);
+      await app.broadcastRoomState(roomId);
       return { room: toPublicRoomState(started.room) };
     } catch (error) {
       return reply

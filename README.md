@@ -14,7 +14,6 @@ TypeScript monorepo for a multiplayer web implementation of Splendor.
 - `npm run build`
 - `npm run dev`
 - `npm run start`
-- `npm run dev:bypass`
 - `npm run dev:storybook`
 - `npm run build:storybook`
 - `npm run typecheck`
@@ -32,7 +31,6 @@ Copy values from `.env.example`.
   - `AUTH0_DOMAIN`
   - `AUTH0_AUDIENCE`
   - `GUEST_AUTH_ENABLED`
-  - `DEV_AUTH_BYPASS`
   - `PORT`
   - `HOST`
 - Frontend build:
@@ -43,7 +41,6 @@ Copy values from `.env.example`.
   - `VITE_AUTH0_REDIRECT_URI`
   - `VITE_GUEST_AUTH_ENABLED`
   - `VITE_API_BASE_URL`
-  - `VITE_DEV_AUTH_BYPASS`
 
 Auth0 is off by default. For guest-name deployment without Auth0, you do not need to set any Auth0 variables.
 
@@ -73,9 +70,6 @@ VITE_AUTH0_AUDIENCE=...
 - `npm run dev`
   - runs the game-engine build watch, the Fastify server, and the Vite frontend
   - Vite proxies `/api`, `/health`, and `/ws` to the local server
-- `npm run dev:bypass`
-  - runs the same stack with local auth bypass enabled on both server and frontend
-  - each browser tab can pick a different built-in dev player from session storage
 
 ## Single-Service Deploy
 

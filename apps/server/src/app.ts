@@ -8,7 +8,7 @@ import websocket from '@fastify/websocket';
 import Fastify, { type FastifyInstance } from 'fastify';
 
 import { createAuth0TokenVerifier } from './auth/verify-auth0-token.js';
-import { registerGameSocket, type SocketLike } from './realtime/game-socket.js';
+import { broadcastRoomState, registerGameSocket, type SocketLike } from './realtime/game-socket.js';
 import { registerHealthRoutes } from './routes/health.js';
 import { registerRoomRoutes } from './routes/rooms.js';
 import { createInMemoryRoomStore } from './services/room-store.js';
@@ -16,6 +16,7 @@ import { type ServerDependencies } from './types.js';
 
 declare module 'fastify' {
   interface FastifyInstance {
+    broadcastRoomState: (roomId: string) => Promise<void>;
     serverDependencies: ServerDependencies;
   }
 }
@@ -44,7 +45,17 @@ export const createApp = async (
     makeSeed: options.dependencies?.makeSeed ?? randomUUID,
   };
 
-  const connections = new Map<string, Set<SocketLike>>();
+  const connections = new Map<string, Map<SocketLike, string>>();
+
+  app.broadcastRoomState = async (roomId: string): Promise<void> => {
+    const room = await app.serverDependencies.roomStore.getRoom(roomId);
+
+    if (!room) {
+      return;
+    }
+
+    broadcastRoomState(connections, roomId, room);
+  };
 
   app.addHook('onClose', async () => {
     await app.serverDependencies.roomStore.close?.();

@@ -1,0 +1,2 @@
+[ ] can we keep room IDs short? like 4-6 digits long, so easy to copy/paste? we will never have more than like 3 rooms at a time lol
+[ ] clean up all the old "bypass dev mode" stuff from the frontend and backend

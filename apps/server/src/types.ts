@@ -31,6 +31,7 @@ export interface RoomRecord {
 export interface PublicRoomState {
   readonly id: string;
   readonly config: RoomConfig;
+  readonly connectedUserIds: readonly string[];
   readonly hostUserId: string;
   readonly participants: readonly RoomParticipant[];
   readonly stateVersion: number;

@@ -1,6 +1,6 @@
 import { type Move } from '@splendor/game-engine';
 import { useEffect, useRef, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 
 import { RoomScene } from '../components/room-scene.js';
 import { joinRoom, loadRoom, startRoom } from '../lib/api.js';
@@ -13,6 +13,7 @@ const reconnectDelayForAttempt = (attempt: number): number =>
 
 export const RoomPage = () => {
   const { roomId = '' } = useParams();
+  const navigate = useNavigate();
   const {
     devProfiles,
     getAccessTokenSilently,
@@ -33,7 +34,10 @@ export const RoomPage = () => {
   const [isSocketConnected, setIsSocketConnected] = useState(false);
   const socketRef = useRef<WebSocket | null>(null);
   const reconnectTimerRef = useRef<number | null>(null);
+  const socketAttemptRef = useRef(0);
   const currentUserId = user?.id;
+  const isJoinedParticipant =
+    room !== null && room.participants.some((participant) => participant.userId === currentUserId);
 
   useEffect(() => {
     if (!isAuthenticated || roomId.length === 0) {
@@ -53,6 +57,11 @@ export const RoomPage = () => {
         }
       } catch (error) {
         if (!isCancelled) {
+          if (error instanceof Error && error.message === 'Room not found.') {
+            navigate('/', { replace: true });
+            return;
+          }
+
           setErrorMessage(error instanceof Error ? error.message : 'Failed to load room.');
         }
       }
@@ -66,12 +75,18 @@ export const RoomPage = () => {
   }, [getAccessTokenSilently, isAuthenticated, roomId]);
 
   useEffect(() => {
-    if (!isAuthenticated || roomId.length === 0) {
+    if (!isAuthenticated || roomId.length === 0 || !isJoinedParticipant) {
       return;
     }
 
+    console.debug('[room-socket] effect:start', {
+      roomId,
+      currentUserId,
+      isJoinedParticipant,
+    });
     setIsSocketConnected(false);
     let isCancelled = false;
+    let shouldReconnect = true;
     let reconnectAttempt = 0;
 
     const clearReconnectTimer = (): void => {
@@ -89,6 +104,12 @@ export const RoomPage = () => {
       clearReconnectTimer();
       const delayMs = reconnectDelayForAttempt(reconnectAttempt);
       reconnectAttempt += 1;
+      console.debug('[room-socket] reconnect:scheduled', {
+        roomId,
+        currentUserId,
+        reconnectAttempt,
+        delayMs,
+      });
       setErrorMessage('Connection lost. Reconnecting…');
       reconnectTimerRef.current = window.setTimeout(() => {
         void connect();
@@ -97,39 +118,87 @@ export const RoomPage = () => {
 
     const connect = async (): Promise<void> => {
       try {
+        socketAttemptRef.current += 1;
+        const attempt = socketAttemptRef.current;
         const token = await getAccessTokenSilently();
 
         if (isCancelled) {
           return;
         }
 
+        console.debug('[room-socket] connect:begin', {
+          roomId,
+          currentUserId,
+          attempt,
+          reconnectAttempt,
+        });
+
         const socket = connectToRoomSocket(
           roomId,
           token,
           () => {
             reconnectAttempt = 0;
+            console.debug('[room-socket] open', {
+              roomId,
+              currentUserId,
+              attempt,
+            });
             setIsSocketConnected(true);
             setErrorMessage(null);
           },
           (message: ServerMessage) => {
+            console.debug('[room-socket] message', {
+              roomId,
+              currentUserId,
+              attempt,
+              type: message.type,
+            });
             if (message.type === 'room-state') {
               setRoom(message.room);
               setErrorMessage(null);
               return;
             }
 
+            if (message.message === 'Room not found.') {
+              navigate('/', { replace: true });
+              return;
+            }
+
             setErrorMessage(message.message);
           },
-          () => {
+          (event: CloseEvent) => {
+            console.debug('[room-socket] close', {
+              roomId,
+              currentUserId,
+              attempt,
+              code: event.code,
+              reason: event.reason,
+              wasClean: event.wasClean,
+              shouldReconnect,
+            });
             socketRef.current = null;
             setIsSocketConnected(false);
-            scheduleReconnect();
+            if (shouldReconnect) {
+              scheduleReconnect();
+            }
+          },
+          () => {
+            console.debug('[room-socket] error', {
+              roomId,
+              currentUserId,
+              attempt,
+            });
           },
         );
 
         socketRef.current = socket;
       } catch (error) {
         if (!isCancelled) {
+          console.debug('[room-socket] connect:failed', {
+            roomId,
+            currentUserId,
+            error: error instanceof Error ? error.message : 'unknown',
+          });
           setErrorMessage(
             error instanceof Error ? error.message : 'Failed to connect to room.',
           );
@@ -141,13 +210,18 @@ export const RoomPage = () => {
     void connect();
 
     return () => {
+      console.debug('[room-socket] effect:cleanup', {
+        roomId,
+        currentUserId,
+      });
       isCancelled = true;
+      shouldReconnect = false;
       clearReconnectTimer();
       setIsSocketConnected(false);
       socketRef.current?.close();
       socketRef.current = null;
     };
-  }, [getAccessTokenSilently, isAuthenticated, roomId]);
+  }, [getAccessTokenSilently, isAuthenticated, isJoinedParticipant, roomId]);
 
   const submitMove = (move: Move): void => {
     if (!socketRef.current || socketRef.current.readyState !== WebSocket.OPEN) {

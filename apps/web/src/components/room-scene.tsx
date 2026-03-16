@@ -1290,23 +1290,45 @@ export const RoomScene = ({
 
         {room ? (
           <>
-            <section className="rounded-[1rem] border border-white/10 bg-stone-950/72 p-2 shadow-[0_14px_36px_rgba(0,0,0,0.24)]">
-              <div className="space-y-1.5">
-                {playerSummaries.map((player) => (
-                  <PlayerSummaryRow
-                    key={`summary-${player.id}`}
-                    currentUserId={currentUserId}
-                    onPress={() => {
-                      if (game) {
-                        setSelection({ type: 'player', playerId: player.id });
-                      }
-                    }}
-                    player={player}
-                    room={room}
-                  />
-                ))}
-              </div>
-            </section>
+            {game ? (
+              <section className="rounded-[1rem] border border-white/10 bg-stone-950/72 p-2 shadow-[0_14px_36px_rgba(0,0,0,0.24)]">
+                <div className="space-y-1.5">
+                  {playerSummaries.map((player) => (
+                    <PlayerSummaryRow
+                      key={`summary-${player.id}`}
+                      currentUserId={currentUserId}
+                      onPress={() => {
+                        if (game) {
+                          setSelection({ type: 'player', playerId: player.id });
+                        }
+                      }}
+                      player={player}
+                      room={room}
+                    />
+                  ))}
+                </div>
+              </section>
+            ) : (
+              <section className="rounded-[1rem] border border-white/10 bg-stone-950/72 p-3 shadow-[0_14px_36px_rgba(0,0,0,0.24)]">
+                <div className="space-y-2">
+                  {room.participants.map((participant) => (
+                    <div
+                      key={`waiting-participant-${participant.userId}`}
+                      className="flex items-center gap-3 rounded-[0.9rem] border border-white/8 bg-white/4 px-3 py-2"
+                    >
+                      <span
+                        className={`h-2.5 w-2.5 rounded-full ${
+                          room.connectedUserIds.includes(participant.userId)
+                            ? 'bg-emerald-400 shadow-[0_0_10px_rgba(52,211,153,0.4)]'
+                            : 'bg-rose-400/90 shadow-[0_0_10px_rgba(251,113,133,0.22)]'
+                        }`}
+                      />
+                      <span className="text-sm text-stone-200">{participant.displayName}</span>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            )}
 
             {game && showGameComplete && game.status === 'finished' ? (
               <GameCompleteScreen

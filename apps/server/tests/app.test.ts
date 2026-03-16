@@ -134,9 +134,12 @@ describe('server app', () => {
     expect(started.statusCode).toBe(200);
     const initialVersion = started.json().room.stateVersion as number;
 
-    const roomConnections = new Map<string, Set<ReturnType<typeof createFakeSocket>['socket']>>();
+    const roomConnections = new Map<
+      string,
+      Map<ReturnType<typeof createFakeSocket>['socket'], string>
+    >();
     const hostSocket = createFakeSocket();
-    roomConnections.set(roomId, new Set([hostSocket.socket]));
+    roomConnections.set(roomId, new Map([[hostSocket.socket, users.host!.id]]));
 
     await submitRoomMoveFromSocket(
       app,
@@ -193,10 +196,19 @@ describe('server app', () => {
       headers: authHeader('host'),
     });
 
-    const roomConnections = new Map<string, Set<ReturnType<typeof createFakeSocket>['socket']>>();
+    const roomConnections = new Map<
+      string,
+      Map<ReturnType<typeof createFakeSocket>['socket'], string>
+    >();
     const hostSocket = createFakeSocket();
     const guestSocket = createFakeSocket();
-    roomConnections.set(roomId, new Set([hostSocket.socket, guestSocket.socket]));
+    roomConnections.set(
+      roomId,
+      new Map([
+        [hostSocket.socket, users.host!.id],
+        [guestSocket.socket, users.guest!.id],
+      ]),
+    );
 
     await submitRoomMoveFromSocket(
       app,

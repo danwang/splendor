@@ -39,6 +39,7 @@ export const createRoom = (
     seatCount: 3,
     targetScore: 15,
   },
+  connectedUserIds: players.map((player) => player.id),
   hostUserId: 'dev-alice',
   participants: players.map((player) => ({
     userId: player.id,
