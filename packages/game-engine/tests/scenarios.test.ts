@@ -223,6 +223,50 @@ describe('engine scenarios', () => {
     }
   });
 
+  it('refills the purchased market slot in place instead of shifting the row', () => {
+    const seededState = buildState();
+    const originalTierOne = seededState.market.tier1;
+    const nextDeckCardId = seededState.decks.tier1[0]!;
+    const purchasedCardId = originalTierOne[1]!.id;
+
+    const state: GameState = {
+      ...seededState,
+      players: [
+        {
+          ...seededState.players[0]!,
+          tokens: createTokenMap({
+            white: 4,
+            blue: 4,
+            green: 4,
+            red: 4,
+            black: 4,
+          }),
+        },
+        seededState.players[1]!,
+      ],
+    };
+
+    const result = reduceGame(state, {
+      type: 'purchase-visible',
+      cardId: purchasedCardId,
+      payment: {
+        tokens: originalTierOne[1]!.cost,
+        gold: 0,
+      },
+    });
+
+    expect(result.ok).toBe(true);
+
+    if (!result.ok) {
+      return;
+    }
+
+    expect(result.state.market.tier1[0]!.id).toBe(originalTierOne[0]!.id);
+    expect(result.state.market.tier1[1]!.id).toBe(nextDeckCardId);
+    expect(result.state.market.tier1[2]!.id).toBe(originalTierOne[2]!.id);
+    expect(result.state.market.tier1[3]!.id).toBe(originalTierOne[3]!.id);
+  });
+
   it('supports payment with permanent discounts plus gold', () => {
     const expensiveCard: Card = {
       id: 'discount-gold-card',

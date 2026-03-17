@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
-import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { Navigate, Route, Routes } from 'react-router-dom';
 
 import { MockAppAuthProvider, type AppAuthContextValue } from '../lib/auth.js';
 import { RoomPage } from './room-page.js';
@@ -23,11 +23,10 @@ const meta = {
   decorators: [
     (Story) => (
       <MockAppAuthProvider value={guestAuthValue}>
-        <MemoryRouter initialEntries={['/rooms/storybook-room']}>
-          <Routes>
-            <Route path="/rooms/:roomId" element={<Story />} />
-          </Routes>
-        </MemoryRouter>
+        <Routes>
+          <Route path="/" element={<Navigate replace to="/rooms/storybook-room" />} />
+          <Route path="/rooms/:roomId" element={<Story />} />
+        </Routes>
       </MockAppAuthProvider>
     ),
   ],

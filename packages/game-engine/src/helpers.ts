@@ -302,11 +302,19 @@ export const replaceMarketCard = (
   removedId: string,
   deckIds: readonly string[],
 ): { readonly market: readonly Card[]; readonly deckIds: readonly string[] } => {
-  const remainingMarket = market.filter((card) => card.id !== removedId);
+  const removedIndex = market.findIndex((card) => card.id === removedId);
+
+  if (removedIndex === -1) {
+    return { market, deckIds };
+  }
+
   const nextCardId = deckIds[0];
 
   if (!nextCardId) {
-    return { market: remainingMarket, deckIds };
+    return {
+      market: market.filter((card) => card.id !== removedId),
+      deckIds,
+    };
   }
 
   const nextCard = CARDS_BY_ID.get(nextCardId);
@@ -316,7 +324,7 @@ export const replaceMarketCard = (
   }
 
   return {
-    market: [...remainingMarket, nextCard],
+    market: market.map((card, index) => (index === removedIndex ? nextCard : card)),
     deckIds: deckIds.slice(1),
   };
 };

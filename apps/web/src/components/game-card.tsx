@@ -217,6 +217,7 @@ export const SplendorCard = ({
 
 export interface DeckCardProps {
   readonly disabled?: boolean;
+  readonly hideCount?: boolean;
   readonly isSelected?: boolean;
   readonly onPress?: () => void;
   readonly remainingCount: number;
@@ -226,6 +227,7 @@ export interface DeckCardProps {
 
 export const DeckCard = ({
   disabled = false,
+  hideCount = false,
   isSelected = false,
   onPress,
   remainingCount,
@@ -249,7 +251,9 @@ export const DeckCard = ({
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(255,255,255,0.2),_transparent_24%),linear-gradient(135deg,_rgba(255,255,255,0.12),_transparent_40%,_rgba(0,0,0,0.18))]" />
       <div className="absolute inset-[10%] rounded-[0.8rem] border border-white/10 bg-[linear-gradient(135deg,_rgba(255,255,255,0.08),_transparent_38%,_rgba(0,0,0,0.12))]" />
       <div className={`relative flex flex-1 items-center justify-center`}>
-        <span className={`font-serif leading-none ${isCompact ? 'text-[1.85rem] text-white/72' : 'text-4xl text-white/78'}`}>{remainingCount}</span>
+        {!hideCount ? (
+          <span className={`font-serif leading-none ${isCompact ? 'text-[1.85rem] text-white/72' : 'text-4xl text-white/78'}`}>{remainingCount}</span>
+        ) : null}
       </div>
       <div className="relative flex items-center justify-center gap-1.5">
         {Array.from({ length: tier }, (_, index) => (

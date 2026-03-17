@@ -6,6 +6,7 @@ export interface WebConfig {
   readonly auth0Domain: string;
   readonly auth0RedirectUri: string;
   readonly isGuestAuthEnabled: boolean;
+  readonly isGuestAuthPerTab: boolean;
   readonly isAuthConfigured: boolean;
 }
 
@@ -17,6 +18,9 @@ export const readWebConfig = (): WebConfig => {
   const auth0Audience = environment.VITE_AUTH0_AUDIENCE ?? '';
   const apiBaseUrl = environment.VITE_API_BASE_URL ?? '';
   const isGuestAuthEnabled = environment.VITE_GUEST_AUTH_ENABLED === 'true';
+  const isGuestAuthPerTab =
+    typeof window !== 'undefined' &&
+    new URLSearchParams(window.location.search).get('dev') === 'true';
   const defaultRedirectUri =
     typeof window === 'undefined' ? 'http://127.0.0.1:5173' : window.location.origin;
 
@@ -28,6 +32,7 @@ export const readWebConfig = (): WebConfig => {
     auth0Domain,
     auth0RedirectUri: environment.VITE_AUTH0_REDIRECT_URI ?? defaultRedirectUri,
     isGuestAuthEnabled,
+    isGuestAuthPerTab,
     isAuthConfigured:
       !auth0Enabled ||
       isGuestAuthEnabled ||

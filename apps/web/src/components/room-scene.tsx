@@ -10,7 +10,7 @@ import {
   type PaymentSelection,
   type TokenColor,
 } from '@splendor/game-engine';
-import { useEffect, useRef, useState } from 'react';
+import { type CSSProperties, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 
 import { ActionSheet } from './action-sheet.js';
@@ -25,6 +25,12 @@ import {
   tokenColorOrder,
   type PlayerSummaryModel,
 } from '../lib/game-ui.js';
+import {
+  deriveRoomActivityEntries,
+  deriveRoomAnimationState,
+  latestRoomEntries,
+  type RoomActivityEntry,
+} from '../lib/room-activity.js';
 import { type PublicRoomState, type RoomParticipant } from '../lib/types.js';
 
 type Selection =
@@ -35,6 +41,46 @@ type Selection =
   | { readonly type: 'menu' }
   | { readonly type: 'player'; readonly playerId: string }
   | null;
+
+type BoardPanel = 'board' | 'nobles' | 'log';
+
+interface ChipFlight {
+  readonly color: GemColor;
+  readonly fromX: number;
+  readonly fromY: number;
+  readonly id: string;
+  readonly toX: number;
+  readonly toY: number;
+}
+
+interface CardFlight {
+  readonly kind:
+    | 'purchase-visible'
+    | 'purchase-reserved'
+    | 'reserve-visible'
+    | 'reserve-deck'
+    | 'noble';
+  readonly fromX: number;
+  readonly fromY: number;
+  readonly id: string;
+  readonly toX: number;
+  readonly toY: number;
+  readonly card?: Card;
+  readonly noble?: GameState['nobles'][number];
+  readonly tier?: 1 | 2 | 3;
+}
+
+interface PlayerReceiveAnimation {
+  readonly changedChipColors: readonly GemColor[];
+  readonly changedTableauColors: readonly TokenColor[];
+  readonly reservedChanged: boolean;
+  readonly scoreChanged: boolean;
+}
+
+interface SourceChipBulges {
+  readonly bankColors: readonly GemColor[];
+  readonly playerColorsById: Readonly<Record<string, readonly GemColor[]>>;
+}
 
 const tokenRingStyles: Readonly<Record<TokenColor, string>> = {
   white: 'outline-stone-300/80',
@@ -49,6 +95,9 @@ const subtleButtonClass =
 
 const primaryButtonClass =
   'rounded-full bg-amber-300 px-3 py-2 text-sm font-semibold text-stone-950 transition hover:bg-amber-200 disabled:cursor-not-allowed disabled:bg-stone-700 disabled:text-stone-400';
+
+const panelToggleButtonClass =
+  'rounded-full px-3 py-2 text-sm font-medium transition';
 
 const roomCodeLabel = (roomId: string): string =>
   roomId.length > 10 ? roomId.slice(0, 10).toUpperCase() : roomId.toUpperCase();
@@ -99,6 +148,140 @@ const createEmptyPaymentSelection = (): PaymentSelection => ({
   }, {} as Record<TokenColor, number>),
   gold: 0,
 });
+
+const transitionDelayMs = 1_200;
+const transitionSettleMs = 900;
+const transitionGapMs = 200;
+const getFallbackNobleFlightOrigin = (): { readonly x: number; readonly y: number } => {
+  if (typeof window === 'undefined') {
+    return { x: 148, y: 640 };
+  }
+
+  return {
+    x: window.innerWidth / 2 - 40,
+    y: window.innerHeight - 112,
+  };
+};
+
+const derivePlayerReceiveAnimations = (
+  previousGame: GameState,
+  nextGame: GameState,
+): Readonly<Record<string, PlayerReceiveAnimation>> =>
+  nextGame.players.reduce<Record<string, PlayerReceiveAnimation>>((result, nextPlayer, index) => {
+    const previousPlayer = previousGame.players[index];
+
+    if (!previousPlayer) {
+      return result;
+    }
+
+    const changedChipColors = gemOrder.filter(
+      (color) => nextPlayer.tokens[color] > previousPlayer.tokens[color],
+    );
+    const changedTableauColors = nextPlayer.purchasedCards
+      .filter((card) => !previousPlayer.purchasedCards.some((entry) => entry.id === card.id))
+      .map((card) => card.bonus);
+    const previousScore =
+      previousPlayer.purchasedCards.reduce((sum, card) => sum + card.points, 0) +
+      previousPlayer.nobles.reduce((sum, noble) => sum + noble.points, 0);
+    const nextScore =
+      nextPlayer.purchasedCards.reduce((sum, card) => sum + card.points, 0) +
+      nextPlayer.nobles.reduce((sum, noble) => sum + noble.points, 0);
+
+    return {
+      ...result,
+      [nextPlayer.identity.id]: {
+        changedChipColors,
+        changedTableauColors,
+        reservedChanged: nextPlayer.reservedCards.length !== previousPlayer.reservedCards.length,
+        scoreChanged: nextScore !== previousScore,
+      },
+    };
+  }, {});
+
+const createChipTransferPresentation = (
+  previousRoom: PublicRoomState,
+  nextRoom: PublicRoomState,
+): PublicRoomState => {
+  if (!previousRoom.game || !nextRoom.game) {
+    return previousRoom;
+  }
+
+  const previousGame = previousRoom.game;
+  const nextGame = nextRoom.game;
+  const previousActor = previousGame.players[previousGame.turn.activePlayerIndex];
+  const nextActor = nextGame.players.find(
+    (player) => player.identity.id === previousActor?.identity.id,
+  );
+
+  if (!previousActor || !nextActor) {
+    return previousRoom;
+  }
+
+  const actorDeltaByColor = gemOrder.reduce<Record<GemColor, number>>((result, color) => {
+    return {
+      ...result,
+      [color]: nextActor.tokens[color] - previousActor.tokens[color],
+    };
+  }, {} as Record<GemColor, number>);
+
+  const intermediatePlayers = previousGame.players.map((player) => {
+    if (player.identity.id !== previousActor.identity.id) {
+      return player;
+    }
+
+    return {
+      ...player,
+      tokens: gemOrder.reduce<Record<GemColor, number>>((result, color) => {
+        const delta = actorDeltaByColor[color];
+
+        return {
+          ...result,
+          [color]: delta < 0 ? nextActor.tokens[color] : previousActor.tokens[color],
+        };
+      }, {} as Record<GemColor, number>),
+    };
+  });
+
+  const intermediateBank = gemOrder.reduce<Record<GemColor, number>>((result, color) => {
+    const delta = actorDeltaByColor[color];
+
+    return {
+      ...result,
+      [color]: delta > 0 ? nextGame.bank[color] : previousGame.bank[color],
+    };
+  }, {} as Record<GemColor, number>);
+
+  return {
+    ...previousRoom,
+    game: {
+      ...previousGame,
+      bank: intermediateBank,
+      players: intermediatePlayers,
+    },
+  };
+};
+
+const createPostFlightPresentation = (
+  previousRoom: PublicRoomState,
+  nextRoom: PublicRoomState,
+): PublicRoomState => {
+  if (
+    !previousRoom.game ||
+    !nextRoom.game ||
+    previousRoom.status !== 'in_progress' ||
+    nextRoom.status !== 'in_progress'
+  ) {
+    return nextRoom;
+  }
+
+  return {
+    ...nextRoom,
+    game: {
+      ...nextRoom.game,
+      turn: previousRoom.game.turn,
+    },
+  };
+};
 
 const currentUserIsParticipant = (
   participants: readonly RoomParticipant[],
@@ -171,24 +354,68 @@ const reservedMarkerStyles = [
   'border-sky-200/35 from-sky-700 via-blue-900 to-sky-950',
 ] as const;
 
-const ChipStrip = ({ counts }: { readonly counts: Readonly<Record<GemColor, number>> }) => (
+const floatingChipStyles: Readonly<Record<GemColor, string>> = {
+  white: 'border border-stone-300/85 bg-stone-100 shadow-[0_4px_14px_rgba(255,255,255,0.2)]',
+  blue: 'bg-sky-400 shadow-[0_4px_14px_rgba(56,189,248,0.28)]',
+  green: 'bg-emerald-400 shadow-[0_4px_14px_rgba(52,211,153,0.28)]',
+  red: 'bg-rose-400 shadow-[0_4px_14px_rgba(251,113,133,0.28)]',
+  black: 'border border-stone-600/80 bg-stone-900 shadow-[0_4px_14px_rgba(24,24,27,0.32)]',
+  gold: 'bg-amber-300 shadow-[0_4px_14px_rgba(252,211,77,0.3)]',
+};
+
+const emptyPlayerReceiveAnimation: PlayerReceiveAnimation = {
+  changedChipColors: [],
+  changedTableauColors: [],
+  reservedChanged: false,
+  scoreChanged: false,
+};
+
+const emptySourceChipBulges: SourceChipBulges = {
+  bankColors: [],
+  playerColorsById: {},
+};
+
+const ChipStrip = ({
+  counts,
+  highlightedColors = [],
+  immediateHighlightedColors = [],
+}: {
+  readonly counts: Readonly<Record<GemColor, number>>;
+  readonly highlightedColors?: readonly GemColor[];
+  readonly immediateHighlightedColors?: readonly GemColor[];
+}) => (
   <div className="flex flex-wrap items-center gap-1">
     {gemOrder.map((color) => (
-      <span key={`chip-${color}`} className={counts[color] > 0 ? '' : 'opacity-25'}>
+      <span
+        key={`chip-${color}`}
+        className={`${counts[color] > 0 ? '' : 'opacity-25'} ${
+          immediateHighlightedColors.includes(color) ? 'receive-bulge' : ''
+        } ${
+          highlightedColors.includes(color) ? 'receive-bulge receive-bulge-delay' : ''
+        }`}
+      >
         <GemPip color={color} count={counts[color]} size="sm" />
       </span>
     ))}
   </div>
 );
 
-const TableauStrip = ({ counts }: { readonly counts: PlayerSummaryModel['tableauBonuses'] }) => (
+const TableauStrip = ({
+  counts,
+  highlightedColors = [],
+}: {
+  readonly counts: PlayerSummaryModel['tableauBonuses'];
+  readonly highlightedColors?: readonly TokenColor[];
+}) => (
   <div className="flex flex-wrap items-center gap-1">
     {tokenColorOrder.map((color) => (
       <span
         key={`tableau-${color}`}
         className={`inline-flex min-w-7 items-center justify-center rounded-[0.45rem] border px-1.5 py-1 text-[10px] font-bold shadow-sm ${
           tableauBadgeStyles[color]
-        } ${counts[color] > 0 ? '' : 'opacity-35'}`}
+        } ${counts[color] > 0 ? '' : 'opacity-35'} ${
+          highlightedColors.includes(color) ? 'receive-bulge receive-bulge-delay' : ''
+        }`}
       >
         {counts[color]}
       </span>
@@ -196,14 +423,20 @@ const TableauStrip = ({ counts }: { readonly counts: PlayerSummaryModel['tableau
   </div>
 );
 
-const ReservedMarkers = ({ tiers }: { readonly tiers: readonly (1 | 2 | 3)[] }) => (
+const ReservedMarkers = ({
+  isHighlighted = false,
+  tiers,
+}: {
+  readonly isHighlighted?: boolean;
+  readonly tiers: readonly (1 | 2 | 3)[];
+}) => (
   <div className="flex items-center gap-1">
     {tiers.map((tier, index) => (
       <span
         key={`reserved-marker-${index}`}
         className={`relative h-6 w-4 rounded-[0.4rem] border bg-linear-to-br shadow-sm ${
           reservedMarkerStyles[tier - 1]
-        }`}
+        } ${isHighlighted ? 'receive-bulge receive-bulge-delay' : ''}`}
       >
         <span className="absolute inset-[2px] rounded-[0.28rem] border border-white/10 bg-[linear-gradient(135deg,_rgba(255,255,255,0.08),_transparent_40%,_rgba(0,0,0,0.18))]" />
       </span>
@@ -251,15 +484,29 @@ const NobleMarkers = ({ nobleIds }: { readonly nobleIds: readonly string[] }) =>
 );
 
 const PlayerSummaryRow = ({
+  chipTargetRef,
   currentUserId,
+  isRecentlyUpdated,
+  nobleTargetRef,
+  playerAnimation,
+  sourceChipBulges,
   onPress,
   player,
   room,
+  reservedTargetRef,
+  tableauTargetRef,
 }: {
+  readonly chipTargetRef?: (node: HTMLDivElement | null) => void;
   readonly currentUserId: string | undefined;
+  readonly isRecentlyUpdated: boolean;
+  readonly nobleTargetRef?: (node: HTMLDivElement | null) => void;
+  readonly playerAnimation: PlayerReceiveAnimation;
+  readonly sourceChipBulges: readonly GemColor[];
   readonly onPress: () => void;
   readonly player: PlayerSummaryModel;
   readonly room: PublicRoomState;
+  readonly reservedTargetRef?: (node: HTMLDivElement | null) => void;
+  readonly tableauTargetRef?: (node: HTMLDivElement | null) => void;
 }) => {
   const isActive = room.game?.players[room.game.turn.activePlayerIndex]?.identity.id === player.id;
   const isCurrentUser = player.id === currentUserId;
@@ -278,7 +525,7 @@ const PlayerSummaryRow = ({
           : isWaitingOnOpponent
             ? 'border-sky-300/35 bg-sky-400/8'
             : 'border-white/8 bg-white/3'
-      }`}
+      } ${isRecentlyUpdated ? 'player-row-receive' : ''}`}
       onClick={onPress}
       type="button"
     >
@@ -307,7 +554,13 @@ const PlayerSummaryRow = ({
         </div>
         <div className="text-right">
           <p className="text-[9px] uppercase tracking-[0.18em] text-stone-500">VP</p>
-          <p className="text-lg leading-none font-semibold text-amber-50">{player.score}</p>
+          <p
+            className={`text-lg leading-none font-semibold text-amber-50 ${
+              playerAnimation.scoreChanged ? 'score-flip' : ''
+            }`}
+          >
+            {player.score}
+          </p>
         </div>
       </div>
 
@@ -316,8 +569,18 @@ const PlayerSummaryRow = ({
           Cards ({totalTableauCards})
         </p>
         <div className="flex min-w-0 items-center gap-3">
-          <TableauStrip counts={player.tableauBonuses} />
-          <ReservedMarkers tiers={player.reservedTiers} />
+          <div ref={tableauTargetRef}>
+            <TableauStrip
+              counts={player.tableauBonuses}
+              highlightedColors={playerAnimation.changedTableauColors}
+            />
+          </div>
+          <div ref={reservedTargetRef}>
+            <ReservedMarkers
+              isHighlighted={playerAnimation.reservedChanged}
+              tiers={player.reservedTiers}
+            />
+          </div>
         </div>
       </div>
 
@@ -325,8 +588,12 @@ const PlayerSummaryRow = ({
         <p className="whitespace-nowrap text-[9px] uppercase tracking-[0.18em] text-stone-500">
           Chips ({totalChips})
         </p>
-        <div className="min-w-0">
-          <ChipStrip counts={player.tokens} />
+        <div ref={chipTargetRef} className="min-w-0">
+          <ChipStrip
+            counts={player.tokens}
+            highlightedColors={playerAnimation.changedChipColors}
+            immediateHighlightedColors={sourceChipBulges}
+          />
         </div>
       </div>
 
@@ -340,11 +607,17 @@ const PlayerSummaryRow = ({
           </div>
         </div>
       ) : null}
+      <div
+        ref={nobleTargetRef}
+        aria-hidden="true"
+        className="pointer-events-none absolute right-2.5 bottom-2.5 h-7 w-7 opacity-0"
+      />
     </button>
   );
 };
 
 export interface RoomSceneProps {
+  readonly initialActivePanel?: BoardPanel;
   readonly currentUserId: string | undefined;
   readonly errorMessage: string | null;
   readonly initialSelection?: Selection;
@@ -362,6 +635,7 @@ export interface RoomSceneProps {
 }
 
 export const RoomScene = ({
+  initialActivePanel = 'board',
   currentUserId,
   errorMessage,
   initialSelection = null,
@@ -373,18 +647,44 @@ export const RoomScene = ({
   onLogout,
   onStartGame,
   onSubmitMove,
-  room,
+  room: sourceRoom,
   roomId,
 }: RoomSceneProps) => {
-  const [selection, setSelection] = useState<Selection>(initialSelection);
-  const [bankSelection, setBankSelection] = useState<readonly TokenColor[]>([]);
-  const [discardSelection, setDiscardSelection] = useState<readonly GemColor[]>([]);
-  const [purchaseSelection, setPurchaseSelection] = useState<PaymentSelection>(createEmptyPaymentSelection);
+  const [displayedRoom, setDisplayedRoom] = useState(sourceRoom);
+  const room = displayedRoom;
   const game = room?.game ?? null;
+  const [selection, setSelection] = useState<Selection>(initialSelection);
+  const [activePanel, setActivePanel] = useState<BoardPanel>(initialActivePanel);
+  const [bankSelection, setBankSelection] = useState<readonly TokenColor[]>([]);
+  const [chipFlights, setChipFlights] = useState<readonly ChipFlight[]>([]);
+  const [cardFlights, setCardFlights] = useState<readonly CardFlight[]>([]);
+  const [discardSelection, setDiscardSelection] = useState<readonly GemColor[]>([]);
+  const [activityEntries, setActivityEntries] = useState<readonly RoomActivityEntry[]>([]);
+  const [animationState, setAnimationState] = useState(() =>
+    deriveRoomAnimationState(null, sourceRoom),
+  );
+  const [isPresentingTransition, setIsPresentingTransition] = useState(false);
+  const [sourceChipBulges, setSourceChipBulges] = useState<SourceChipBulges>(emptySourceChipBulges);
+  const [playerAnimations, setPlayerAnimations] = useState<
+    Readonly<Record<string, PlayerReceiveAnimation>>
+  >({});
+  const [purchaseSelection, setPurchaseSelection] = useState<PaymentSelection>(createEmptyPaymentSelection);
   const [showGameComplete, setShowGameComplete] = useState(
     initialResultsVisible ?? game?.status === 'finished',
   );
   const wasFinishedRef = useRef(game?.status === 'finished');
+  const previousRoomRef = useRef<PublicRoomState | null>(sourceRoom);
+  const displayCommitTimerRef = useRef<number | null>(null);
+  const animationTimerRef = useRef<number | null>(null);
+  const chipFlightTimerRef = useRef<number | null>(null);
+  const cardFlightTimerRef = useRef<number | null>(null);
+  const bankChipRefs = useRef<Partial<Record<GemColor, HTMLSpanElement | null>>>({});
+  const playerChipTargetRefs = useRef<Partial<Record<string, HTMLDivElement | null>>>({});
+  const marketCardRefs = useRef<Partial<Record<string, HTMLDivElement | null>>>({});
+  const deckRefs = useRef<Partial<Record<CardTier, HTMLDivElement | null>>>({});
+  const playerTableauTargetRefs = useRef<Partial<Record<string, HTMLDivElement | null>>>({});
+  const playerReservedTargetRefs = useRef<Partial<Record<string, HTMLDivElement | null>>>({});
+  const playerNobleTargetRefs = useRef<Partial<Record<string, HTMLDivElement | null>>>({});
   const interaction = game ? deriveInteractionModel(game, currentUserId) : null;
   const playerSummaries = game ? derivePlayerSummaries(game) : [];
   const joined = room ? currentUserIsParticipant(room.participants, currentUserId) : false;
@@ -394,14 +694,48 @@ export const RoomScene = ({
     room.hostUserId === currentUserId &&
     room.status === 'waiting' &&
     room.participants.length >= 2;
-  const canSubmitRealtimeMoves = room?.status === 'in_progress' ? isSocketConnected : true;
+  const canSubmitRealtimeMoves =
+    sourceRoom?.status === 'in_progress'
+      ? isSocketConnected && !isPresentingTransition
+      : true;
+  const clearTimers = (): void => {
+    if (displayCommitTimerRef.current !== null) {
+      window.clearTimeout(displayCommitTimerRef.current);
+      displayCommitTimerRef.current = null;
+    }
+    if (animationTimerRef.current !== null) {
+      window.clearTimeout(animationTimerRef.current);
+      animationTimerRef.current = null;
+    }
+    if (chipFlightTimerRef.current !== null) {
+      window.clearTimeout(chipFlightTimerRef.current);
+      chipFlightTimerRef.current = null;
+    }
+    if (cardFlightTimerRef.current !== null) {
+      window.clearTimeout(cardFlightTimerRef.current);
+      cardFlightTimerRef.current = null;
+    }
+  };
 
-  useEffect(() => {
+  const clearPresentationAnimations = (): void => {
+    setChipFlights([]);
+    setCardFlights([]);
+    setAnimationState(deriveRoomAnimationState(null, null));
+    setPlayerAnimations({});
+    setSourceChipBulges(emptySourceChipBulges);
+    setIsPresentingTransition(false);
+  };
+
+  useLayoutEffect(() => {
     setSelection(initialSelection);
     setBankSelection([]);
     setDiscardSelection([]);
     setPurchaseSelection(createEmptyPaymentSelection());
   }, [initialSelection, room?.stateVersion]);
+
+  useEffect(() => {
+    setActivePanel(initialActivePanel);
+  }, [initialActivePanel]);
 
   useEffect(() => {
     const isFinished = game?.status === 'finished';
@@ -418,6 +752,278 @@ export const RoomScene = ({
 
     wasFinishedRef.current = isFinished;
   }, [game?.status]);
+
+  useEffect(() => {
+    const previousRoom = previousRoomRef.current;
+
+    if (!sourceRoom) {
+      previousRoomRef.current = sourceRoom;
+      return;
+    }
+
+    if (previousRoom && previousRoom.stateVersion !== sourceRoom.stateVersion) {
+      const nextEntries = deriveRoomActivityEntries(previousRoom, sourceRoom);
+      if (nextEntries.length > 0) {
+        setActivityEntries((current) => latestRoomEntries(current, nextEntries));
+      }
+    }
+
+    previousRoomRef.current = sourceRoom;
+  }, [sourceRoom]);
+
+  useEffect(() => {
+    if (!sourceRoom || !displayedRoom) {
+      clearTimers();
+      clearPresentationAnimations();
+      setDisplayedRoom(sourceRoom);
+      return;
+    }
+
+    if (sourceRoom.id !== displayedRoom.id) {
+      clearTimers();
+      clearPresentationAnimations();
+      setDisplayedRoom(sourceRoom);
+      return;
+    }
+
+    if (sourceRoom.stateVersion === displayedRoom.stateVersion) {
+      return;
+    }
+
+    if (isPresentingTransition) {
+      return;
+    }
+
+    if (
+      !sourceRoom.game ||
+      !displayedRoom.game ||
+      sourceRoom.status !== 'in_progress' ||
+      displayedRoom.status !== 'in_progress'
+    ) {
+      clearTimers();
+      setDisplayedRoom(sourceRoom);
+      setAnimationState(deriveRoomAnimationState(displayedRoom, sourceRoom));
+      setPlayerAnimations(
+        displayedRoom.game && sourceRoom.game
+          ? derivePlayerReceiveAnimations(displayedRoom.game, sourceRoom.game)
+          : {},
+      );
+      animationTimerRef.current = window.setTimeout(() => {
+        clearPresentationAnimations();
+      }, transitionSettleMs);
+      return;
+    }
+
+    clearTimers();
+    clearPresentationAnimations();
+
+    const previousGame = displayedRoom.game;
+    const nextGame = sourceRoom.game;
+
+    const nextCardFlights = nextGame.players.flatMap((nextPlayer, index) => {
+      const previousPlayer = previousGame.players[index];
+
+      if (!previousPlayer) {
+        return [];
+      }
+
+      const addedReservedCards = nextPlayer.reservedCards.filter(
+        (card) => !previousPlayer.reservedCards.some((entry) => entry.id === card.id),
+      );
+      const addedPurchasedCards = nextPlayer.purchasedCards.filter(
+        (card) => !previousPlayer.purchasedCards.some((entry) => entry.id === card.id),
+      );
+
+      const reserveFlights = addedReservedCards.flatMap((card, flightIndex) => {
+        const wasVisibleInMarket = cardTierOrder.some((tier) =>
+          previousGame.market[`tier${tier}`].some((entry) => entry.id === card.id),
+        );
+        const sourceRect =
+          (wasVisibleInMarket
+            ? marketCardRefs.current[card.id]?.getBoundingClientRect()
+            : deckRefs.current[card.tier]?.getBoundingClientRect()) ?? null;
+        const targetRect =
+          playerReservedTargetRefs.current[nextPlayer.identity.id]?.getBoundingClientRect() ?? null;
+
+        if (!sourceRect || !targetRect) {
+          return [];
+        }
+
+        return [
+          {
+            kind: wasVisibleInMarket ? 'reserve-visible' : 'reserve-deck',
+            card,
+            fromX: sourceRect.left,
+            fromY: sourceRect.top,
+            id: `${sourceRoom.stateVersion}-reserve-${card.id}-${flightIndex}`,
+            tier: card.tier,
+            toX: targetRect.left,
+            toY: targetRect.top,
+          },
+        ] satisfies readonly CardFlight[];
+      });
+
+      const purchaseFlights = addedPurchasedCards.flatMap((card, flightIndex) => {
+        const sourceRect =
+          (previousPlayer.reservedCards.some((entry) => entry.id === card.id)
+            ? playerReservedTargetRefs.current[nextPlayer.identity.id]?.getBoundingClientRect()
+            : marketCardRefs.current[card.id]?.getBoundingClientRect()) ?? null;
+        const targetRect =
+          playerTableauTargetRefs.current[nextPlayer.identity.id]?.getBoundingClientRect() ?? null;
+
+        if (!sourceRect || !targetRect) {
+          return [];
+        }
+
+        return [
+          {
+            kind: previousPlayer.reservedCards.some((entry) => entry.id === card.id)
+              ? 'purchase-reserved'
+              : 'purchase-visible',
+            card,
+            fromX: sourceRect.left,
+            fromY: sourceRect.top,
+            id: `${sourceRoom.stateVersion}-purchase-${card.id}-${flightIndex}`,
+            tier: card.tier,
+            toX: targetRect.left,
+            toY: targetRect.top,
+          },
+        ] satisfies readonly CardFlight[];
+      });
+
+      const addedNobles = nextPlayer.nobles.filter(
+        (noble) => !previousPlayer.nobles.some((entry) => entry.id === noble.id),
+      );
+      const nobleFlights = addedNobles.flatMap((noble, flightIndex) => {
+        const fallbackOrigin = getFallbackNobleFlightOrigin();
+        const sourceRect =
+          ({
+            height: 80,
+            left: fallbackOrigin.x,
+            top: fallbackOrigin.y,
+            width: 80,
+          } satisfies Pick<DOMRect, 'height' | 'left' | 'top' | 'width'>);
+        const targetRect =
+          playerNobleTargetRefs.current[nextPlayer.identity.id]?.getBoundingClientRect() ?? null;
+
+        if (!targetRect) {
+          return [];
+        }
+
+        return [
+          {
+            kind: 'noble',
+            fromX: sourceRect.left,
+            fromY: sourceRect.top,
+            id: `${sourceRoom.stateVersion}-noble-${noble.id}-${flightIndex}`,
+            noble,
+            toX: targetRect.left,
+            toY: targetRect.top,
+          },
+        ] satisfies readonly CardFlight[];
+      });
+
+      return [...reserveFlights, ...purchaseFlights, ...nobleFlights];
+    });
+
+    const previousActor = previousGame.players[previousGame.turn.activePlayerIndex];
+    const nextActor = nextGame.players.find(
+      (player) => player.identity.id === previousActor?.identity.id,
+    );
+    const nextChipFlights: readonly ChipFlight[] =
+      previousGame.turn.kind === 'main-action' && previousActor && nextActor
+        ? gemOrder
+            .flatMap((color) => {
+              const delta = nextActor.tokens[color] - previousActor.tokens[color];
+              const bankRect = bankChipRefs.current[color]?.getBoundingClientRect() ?? null;
+              const playerRect =
+                playerChipTargetRefs.current[nextActor.identity.id]?.getBoundingClientRect() ?? null;
+
+              if (!bankRect || !playerRect || delta === 0) {
+                return [];
+              }
+
+              const count = Math.min(Math.abs(delta), 3);
+
+              return Array.from({ length: count }, (_, index) => ({
+                color,
+                fromX:
+                  delta > 0
+                    ? bankRect.left + bankRect.width / 2 - 14
+                    : playerRect.left + Math.min(28 + index * 16, playerRect.width - 18),
+                fromY:
+                  delta > 0
+                    ? bankRect.top + bankRect.height / 2 - 14
+                    : playerRect.top + playerRect.height / 2 - 14,
+                id: `${sourceRoom.stateVersion}-${color}-${index}`,
+                toX:
+                  delta > 0
+                    ? playerRect.left + Math.min(28 + index * 16, playerRect.width - 18)
+                    : bankRect.left + bankRect.width / 2 - 14,
+                toY:
+                  delta > 0
+                    ? playerRect.top + playerRect.height / 2 - 14
+                    : bankRect.top + bankRect.height / 2 - 14,
+              }));
+            })
+            .slice(0, 5)
+        : [];
+
+    const shouldDelayPresentation = nextChipFlights.length > 0 || nextCardFlights.length > 0;
+
+    if (!shouldDelayPresentation) {
+      setIsPresentingTransition(false);
+      setDisplayedRoom(sourceRoom);
+      setAnimationState(deriveRoomAnimationState(displayedRoom, sourceRoom));
+      setPlayerAnimations(derivePlayerReceiveAnimations(previousGame, nextGame));
+      animationTimerRef.current = window.setTimeout(() => {
+        clearPresentationAnimations();
+      }, transitionSettleMs);
+      return;
+    }
+
+    setChipFlights(nextChipFlights);
+    setCardFlights(nextCardFlights.slice(0, 2));
+    setSourceChipBulges({
+      bankColors:
+        previousActor && nextActor
+          ? gemOrder.filter((color) => nextActor.tokens[color] > previousActor.tokens[color])
+          : [],
+      playerColorsById:
+        previousActor && nextActor
+          ? {
+              [nextActor.identity.id]: gemOrder.filter(
+                (color) => nextActor.tokens[color] < previousActor.tokens[color],
+              ),
+            }
+          : {},
+    });
+    setIsPresentingTransition(true);
+    setDisplayedRoom(
+      nextChipFlights.length > 0
+        ? createChipTransferPresentation(displayedRoom, sourceRoom)
+        : displayedRoom,
+    );
+
+    displayCommitTimerRef.current = window.setTimeout(() => {
+      setChipFlights([]);
+      setCardFlights([]);
+      setDisplayedRoom(createPostFlightPresentation(displayedRoom, sourceRoom));
+      setAnimationState(deriveRoomAnimationState(displayedRoom, sourceRoom));
+      setPlayerAnimations(derivePlayerReceiveAnimations(previousGame, nextGame));
+      displayCommitTimerRef.current = null;
+      animationTimerRef.current = window.setTimeout(() => {
+        setDisplayedRoom(sourceRoom);
+        clearPresentationAnimations();
+      }, transitionSettleMs + transitionGapMs);
+    }, transitionDelayMs);
+  }, [displayedRoom, isPresentingTransition, sourceRoom]);
+
+  useEffect(() => {
+    return () => {
+      clearTimers();
+    };
+  }, []);
 
   useEffect(() => {
     setPurchaseSelection(createEmptyPaymentSelection());
@@ -467,6 +1073,11 @@ export const RoomScene = ({
     selection?.type === 'player'
       ? game?.players.find((player) => player.identity.id === selection.playerId) ?? null
       : null;
+  const hiddenMarketCardIds = new Set(
+    cardFlights
+      .filter((flight) => flight.kind === 'purchase-visible' || flight.kind === 'reserve-visible')
+      .flatMap((flight) => (flight.card ? [flight.card.id] : [])),
+  );
   const activePlayer = game?.players[game.turn.activePlayerIndex] ?? null;
   const noblesInPlay =
     game
@@ -489,7 +1100,11 @@ export const RoomScene = ({
         })
       : [];
   const forcedSheet =
-    game?.turn.kind === 'discard' ? 'discard' : game?.turn.kind === 'noble' ? 'noble' : null;
+    interaction?.isCurrentUsersTurn && game?.turn.kind === 'discard'
+      ? 'discard'
+      : interaction?.isCurrentUsersTurn && game?.turn.kind === 'noble'
+        ? 'noble'
+        : null;
   const actionSheetOpen = forcedSheet !== null || selection !== null;
   const currentTurnCopy =
     game && interaction
@@ -532,6 +1147,167 @@ export const RoomScene = ({
     setDiscardSelection([]);
     setPurchaseSelection(createEmptyPaymentSelection());
   };
+
+  const renderBoardPanel = () => {
+    if (!game || !interaction) {
+      return null;
+    }
+
+    return (
+      <>
+        <section className="rounded-[1rem] border border-white/10 bg-stone-950/72 p-2 shadow-[0_14px_36px_rgba(0,0,0,0.24)]">
+          <button
+            className={`flex w-full items-center gap-2 rounded-[0.8rem] text-left transition ${
+              selection?.type === 'bank' ? 'bg-white/5' : ''
+            } ${
+              interaction.isCurrentUsersTurn && game.turn.kind === 'main-action' && canSubmitRealtimeMoves
+                ? 'active:scale-[0.995]'
+                : ''
+            }`}
+            disabled={
+              !interaction.isCurrentUsersTurn ||
+              game.turn.kind !== 'main-action' ||
+              !canSubmitRealtimeMoves
+            }
+            onClick={() => openBankSelection()}
+            type="button"
+          >
+            <span className="text-[10px] uppercase tracking-[0.18em] text-stone-400">Bank</span>
+            <div className="flex flex-wrap items-center gap-1.5">
+              {gemOrder.map((color) => (
+                <span
+                  key={`bank-${color}`}
+                  ref={(node) => {
+                    bankChipRefs.current[color] = node;
+                  }}
+                  className={`${color === 'gold' ? 'ml-2' : ''} ${
+                    sourceChipBulges.bankColors.includes(color) ? 'receive-bulge' : ''
+                  } ${
+                    animationState.changedBankColors.includes(color)
+                      ? 'receive-bulge receive-bulge-delay'
+                      : ''
+                  }`}
+                >
+                  <GemPip color={color} count={game.bank[color]} size="sm" />
+                </span>
+              ))}
+            </div>
+          </button>
+        </section>
+
+        <section className="rounded-[1rem] border border-white/10 bg-stone-950/72 p-2 shadow-[0_14px_36px_rgba(0,0,0,0.24)]">
+          <p className="px-0.5 text-[10px] uppercase tracking-[0.18em] text-stone-400">Market</p>
+          <div className="mt-2 flex flex-col gap-1.5">
+            {cardTierOrder.map((tier) => {
+              const tierKey = `tier${tier}` as const;
+
+              return (
+                <section key={`tier-${tier}`} className="px-0.5">
+                  <div className="grid grid-cols-5 gap-1.5">
+                    <div
+                      ref={(node) => {
+                        deckRefs.current[tier] = node;
+                      }}
+                      className={animationState.changedDeckTiers.includes(tier) ? 'board-piece-bounce' : ''}
+                    >
+                      <DeckCard
+                        disabled={
+                          !interaction.isCurrentUsersTurn ||
+                          game.turn.kind !== 'main-action' ||
+                          !canSubmitRealtimeMoves
+                        }
+                        isSelected={selection?.type === 'deck' && selection.tier === tier}
+                        onPress={() => setSelection({ type: 'deck', tier })}
+                        remainingCount={game.decks[tierKey].length}
+                        size="compact"
+                        tier={tier}
+                      />
+                    </div>
+                    {game.market[tierKey].map((card) => (
+                      <div
+                        key={card.id}
+                        ref={(node) => {
+                          marketCardRefs.current[card.id] = node;
+                        }}
+                        className={animationState.changedMarketCardIds.includes(card.id) ? 'board-piece-pop' : ''}
+                      >
+                        {hiddenMarketCardIds.has(card.id) ? (
+                          <div className="aspect-[5/7] w-full rounded-[1.05rem] border border-dashed border-white/10 bg-white/[0.03]" />
+                        ) : (
+                          <SplendorCard
+                            card={card}
+                            disabled={!canSubmitRealtimeMoves}
+                            isSelected={selection?.type === 'market-card' && selection.cardId === card.id}
+                            onPress={() => setSelection({ type: 'market-card', cardId: card.id })}
+                            size="compact"
+                          />
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </section>
+              );
+            })}
+          </div>
+        </section>
+      </>
+    );
+  };
+
+  const renderNoblesPanel = () => {
+    if (!game) {
+      return null;
+    }
+
+    return (
+      <section className="rounded-[1rem] border border-white/10 bg-stone-950/72 p-2 shadow-[0_14px_36px_rgba(0,0,0,0.24)]">
+        <p className="px-0.5 text-[10px] uppercase tracking-[0.18em] text-stone-400">Nobles</p>
+        <div className="mt-2 grid grid-cols-3 gap-2 px-0.5">
+          {noblesInPlay.map(({ noble, ownerDisplayName }) => (
+            <div
+              key={`noble-${noble.id}`}
+              className={`relative ${ownerDisplayName ? 'opacity-45 saturate-50' : ''}`}
+            >
+              <NobleTile noble={noble} size="compact" />
+              {ownerDisplayName ? (
+                <span className="absolute right-1.5 top-1.5 inline-flex min-w-5 items-center justify-center rounded-full bg-stone-950/88 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-stone-100 ring-1 ring-white/10">
+                  {ownerDisplayName[0]}
+                </span>
+              ) : null}
+            </div>
+          ))}
+        </div>
+      </section>
+    );
+  };
+
+  const renderLogPanel = () => (
+    <section className="rounded-[1rem] border border-white/10 bg-stone-950/72 p-2 shadow-[0_14px_36px_rgba(0,0,0,0.24)]">
+      <p className="px-0.5 text-[10px] uppercase tracking-[0.18em] text-stone-400">Log</p>
+      <div className="mt-2 space-y-1.5">
+        {activityEntries.length > 0 ? (
+          activityEntries.map((entry) => (
+            <div
+              key={entry.id}
+              className={`log-entry rounded-[0.9rem] border px-3 py-2 text-sm ${
+                entry.accent === 'amber'
+                  ? 'border-amber-300/18 bg-amber-300/7 text-amber-50'
+                  : entry.accent === 'emerald'
+                    ? 'border-emerald-300/18 bg-emerald-300/7 text-emerald-50'
+                    : 'border-sky-300/18 bg-sky-300/7 text-sky-50'
+              } ${entry.stateVersion === room?.stateVersion ? 'log-entry-new' : ''}`}
+            >
+              {entry.message}
+            </div>
+          ))
+        ) : (
+          <p className="rounded-[0.9rem] border border-white/8 bg-white/4 px-3 py-3 text-sm text-stone-400">
+            No actions yet.
+          </p>
+        )}
+      </div>
+    </section>
+  );
 
   const renderMarketSheet = (card: Card) => {
     const purchaseMove = interaction?.purchaseVisibleByCardId[card.id];
@@ -990,21 +1766,19 @@ export const RoomScene = ({
           const claimMove = interaction?.claimNobleMoves.find((move) => move.nobleId === noble.id);
 
           return (
-            <button
+            <NobleTile
               key={`noble-${noble.id}`}
-              className={`rounded-[1rem] text-left transition ${
-                claimMove ? 'active:scale-[0.98]' : 'cursor-default opacity-35 saturate-50'
-              }`}
-              disabled={!claimMove || !canSubmitRealtimeMoves}
-              onClick={() => {
-                if (claimMove) {
-                  submitAndReset(claimMove);
-                }
-              }}
-              type="button"
-            >
-              <NobleTile isSelected={Boolean(claimMove)} noble={noble} size="compact" />
-            </button>
+              isSelected={Boolean(claimMove)}
+              noble={noble}
+              size="compact"
+              {...(claimMove && canSubmitRealtimeMoves
+                ? {
+                    onPress: () => {
+                      submitAndReset(claimMove);
+                    },
+                  }
+                : {})}
+            />
           );
         })}
       </div>
@@ -1273,8 +2047,17 @@ export const RoomScene = ({
                 <div className="space-y-1.5">
                   {playerSummaries.map((player) => (
                     <PlayerSummaryRow
+                      chipTargetRef={(node) => {
+                        playerChipTargetRefs.current[player.id] = node;
+                      }}
                       key={`summary-${player.id}`}
                       currentUserId={currentUserId}
+                      isRecentlyUpdated={animationState.changedPlayerIds.includes(player.id)}
+                      nobleTargetRef={(node) => {
+                        playerNobleTargetRefs.current[player.id] = node;
+                      }}
+                      playerAnimation={playerAnimations[player.id] ?? emptyPlayerReceiveAnimation}
+                      sourceChipBulges={sourceChipBulges.playerColorsById[player.id] ?? []}
                       onPress={() => {
                         if (game) {
                           setSelection({ type: 'player', playerId: player.id });
@@ -1282,6 +2065,12 @@ export const RoomScene = ({
                       }}
                       player={player}
                       room={room}
+                      reservedTargetRef={(node) => {
+                        playerReservedTargetRefs.current[player.id] = node;
+                      }}
+                      tableauTargetRef={(node) => {
+                        playerTableauTargetRefs.current[player.id] = node;
+                      }}
                     />
                   ))}
                 </div>
@@ -1328,99 +2117,30 @@ export const RoomScene = ({
               />
             ) : game ? (
               <>
-                <section className="rounded-[1rem] border border-white/10 bg-stone-950/72 p-2 shadow-[0_14px_36px_rgba(0,0,0,0.24)]">
-                  <button
-                    className={`flex w-full items-center gap-2 rounded-[0.8rem] text-left transition ${
-                      selection?.type === 'bank' ? 'bg-white/5' : ''
-                    } ${
-                      interaction?.isCurrentUsersTurn &&
-                      game.turn.kind === 'main-action' &&
-                      canSubmitRealtimeMoves
-                        ? 'active:scale-[0.995]'
-                        : ''
-                    }`}
-                    disabled={
-                      !interaction?.isCurrentUsersTurn ||
-                      game.turn.kind !== 'main-action' ||
-                      !canSubmitRealtimeMoves
-                    }
-                    onClick={() => openBankSelection()}
-                    type="button"
-                  >
-                    <span className="text-[10px] uppercase tracking-[0.18em] text-stone-400">Bank</span>
-                    <div className="flex flex-wrap items-center gap-1.5">
-                      {gemOrder.map((color) => (
-                        <span
-                          key={`bank-${color}`}
-                          className={`${color === 'gold' ? 'ml-2' : ''}`}
-                        >
-                          <GemPip color={color} count={game.bank[color]} size="sm" />
-                        </span>
-                      ))}
-                    </div>
-                  </button>
-                </section>
-
-                <section className="rounded-[1rem] border border-white/10 bg-stone-950/72 p-2 shadow-[0_14px_36px_rgba(0,0,0,0.24)]">
-                  <p className="px-0.5 text-[10px] uppercase tracking-[0.18em] text-stone-400">
-                    Market
-                  </p>
-                  <div className="mt-2 flex flex-col gap-1.5">
-                    {cardTierOrder.map((tier) => {
-                      const tierKey = `tier${tier}` as const;
-
-                      return (
-                        <section key={`tier-${tier}`} className="px-0.5">
-                          <div className="grid grid-cols-5 gap-1.5">
-                            <DeckCard
-                              disabled={
-                                !interaction?.isCurrentUsersTurn ||
-                                game.turn.kind !== 'main-action' ||
-                                !canSubmitRealtimeMoves
-                              }
-                              isSelected={selection?.type === 'deck' && selection.tier === tier}
-                              onPress={() => setSelection({ type: 'deck', tier })}
-                              remainingCount={game.decks[tierKey].length}
-                              size="compact"
-                              tier={tier}
-                            />
-                            {game.market[tierKey].map((card) => (
-                              <SplendorCard
-                                key={card.id}
-                                card={card}
-                                disabled={!canSubmitRealtimeMoves}
-                                isSelected={selection?.type === 'market-card' && selection.cardId === card.id}
-                                onPress={() => setSelection({ type: 'market-card', cardId: card.id })}
-                                size="compact"
-                              />
-                            ))}
-                          </div>
-                        </section>
-                      );
-                    })}
-                  </div>
-                </section>
-
-                <section className="rounded-[1rem] border border-white/10 bg-stone-950/72 p-2 shadow-[0_14px_36px_rgba(0,0,0,0.24)]">
-                  <p className="px-0.5 text-[10px] uppercase tracking-[0.18em] text-stone-400">
-                    Nobles
-                  </p>
-                  <div className="mt-2 grid grid-cols-3 gap-2 px-0.5">
-                    {noblesInPlay.map(({ noble, ownerDisplayName }) => (
-                      <div
-                        key={`noble-${noble.id}`}
-                        className={`relative ${ownerDisplayName ? 'opacity-45 saturate-50' : ''}`}
+                <section className="rounded-[1rem] border border-white/10 bg-stone-950/72 p-1.5 shadow-[0_14px_36px_rgba(0,0,0,0.24)]">
+                  <div className="grid grid-cols-3 gap-1">
+                    {(['board', 'nobles', 'log'] as const).map((panel) => (
+                      <button
+                        key={`panel-${panel}`}
+                        className={`${panelToggleButtonClass} ${
+                          activePanel === panel
+                            ? 'bg-amber-300 text-stone-950'
+                            : 'bg-white/4 text-stone-300 hover:bg-white/8'
+                        }`}
+                        onClick={() => setActivePanel(panel)}
+                        type="button"
                       >
-                        <NobleTile noble={noble} size="compact" />
-                        {ownerDisplayName ? (
-                          <span className="absolute right-1.5 top-1.5 inline-flex min-w-5 items-center justify-center rounded-full bg-stone-950/88 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-stone-100 ring-1 ring-white/10">
-                            {ownerDisplayName[0]}
-                          </span>
-                        ) : null}
-                      </div>
+                        {panel === 'board' ? 'Board' : panel === 'nobles' ? 'Nobles' : 'Log'}
+                      </button>
                     ))}
                   </div>
                 </section>
+
+                {activePanel === 'board'
+                  ? renderBoardPanel()
+                  : activePanel === 'nobles'
+                    ? renderNoblesPanel()
+                    : renderLogPanel()}
               </>
             ) : (
               <section className="rounded-[1rem] border border-white/10 bg-stone-950/72 p-3 text-sm text-stone-300 shadow-[0_14px_36px_rgba(0,0,0,0.24)]">
@@ -1434,6 +2154,78 @@ export const RoomScene = ({
           </section>
         )}
       </div>
+
+      {chipFlights.map((flight) => (
+        <span
+          key={flight.id}
+          aria-hidden="true"
+          className={`chip-flight fixed z-50 h-7 w-7 rounded-full ${floatingChipStyles[flight.color]}`}
+          style={
+            {
+              left: `${flight.fromX}px`,
+              top: `${flight.fromY}px`,
+              '--chip-dx': `${flight.toX - flight.fromX}px`,
+              '--chip-dy': `${flight.toY - flight.fromY}px`,
+            } as CSSProperties
+          }
+        />
+      ))}
+
+      {cardFlights.map((flight) => (
+        <div
+          key={flight.id}
+          aria-hidden="true"
+          className={`fixed z-50 pointer-events-none ${
+            flight.kind === 'noble' ? 'noble-flight w-[4.25rem]' : 'card-flight w-[4.6rem]'
+          } ${
+            flight.kind === 'reserve-visible'
+              ? 'card-flight-flip'
+              : flight.kind === 'purchase-reserved'
+                ? 'card-flight-purchase-reserved'
+                : ''
+          }`}
+          style={
+            {
+              left: `${flight.fromX}px`,
+              top: `${flight.fromY}px`,
+              '--card-dx': `${flight.toX - flight.fromX}px`,
+              '--card-dy': `${flight.toY - flight.fromY}px`,
+            } as CSSProperties
+          }
+        >
+          {flight.kind === 'noble' && flight.noble ? (
+            <NobleTile noble={flight.noble} size="compact" />
+          ) : flight.kind === 'reserve-deck' && flight.tier ? (
+            <DeckCard hideCount remainingCount={0} size="compact" tier={flight.tier} />
+          ) : flight.kind === 'purchase-reserved' && flight.card && flight.tier ? (
+            <div className="card-flight-purchase-reserved-inner relative aspect-[5/7] w-full">
+              <div
+                className="card-flight-face absolute inset-0"
+                style={{ transform: 'rotateY(180deg)' }}
+              >
+                <DeckCard hideCount remainingCount={0} size="compact" tier={flight.tier} />
+              </div>
+              <div className="card-flight-face absolute inset-0">
+                <SplendorCard card={flight.card} size="compact" />
+              </div>
+            </div>
+          ) : flight.kind === 'reserve-visible' && flight.card && flight.tier ? (
+            <div className="card-flight-flip-inner relative aspect-[5/7] w-full">
+              <div className="card-flight-face absolute inset-0">
+                <SplendorCard card={flight.card} size="compact" />
+              </div>
+              <div
+                className="card-flight-face absolute inset-0"
+                style={{ transform: 'rotateY(180deg)' }}
+              >
+                <DeckCard hideCount remainingCount={0} size="compact" tier={flight.tier} />
+              </div>
+            </div>
+          ) : flight.card ? (
+            <SplendorCard card={flight.card} size="compact" />
+          ) : null}
+        </div>
+      ))}
 
       <ActionSheet
         open={actionSheetOpen && actionSheetContent !== null}
