@@ -1309,9 +1309,16 @@ export const RoomScene = ({
     </section>
   );
 
-  const renderMarketSheet = (card: Card) => {
-    const purchaseMove = interaction?.purchaseVisibleByCardId[card.id];
-    const reserveMove = interaction?.reserveVisibleByCardId[card.id];
+  const renderPurchaseSheet = (
+    card: Card,
+    source: 'market' | 'reserved',
+  ) => {
+    const purchaseMove =
+      source === 'market'
+        ? interaction?.purchaseVisibleByCardId[card.id]
+        : interaction?.purchaseReservedByCardId[card.id];
+    const reserveMove =
+      source === 'market' ? interaction?.reserveVisibleByCardId[card.id] : null;
     const isActionable =
       interaction?.isCurrentUsersTurn &&
       game?.turn.kind === 'main-action' &&
@@ -1505,7 +1512,7 @@ export const RoomScene = ({
             onClick={() => {
               if (manualSelectedCount > 0) {
                 submitAndReset({
-                  type: 'purchase-visible',
+                  type: source === 'market' ? 'purchase-visible' : 'purchase-reserved',
                   cardId: card.id,
                   payment: purchaseSelection,
                 });
@@ -1514,7 +1521,7 @@ export const RoomScene = ({
 
               if (purchaseMove && autoPayment) {
                 submitAndReset({
-                  type: 'purchase-visible',
+                  type: source === 'market' ? 'purchase-visible' : 'purchase-reserved',
                   cardId: card.id,
                   payment: autoPayment,
                 });
@@ -1524,47 +1531,21 @@ export const RoomScene = ({
           >
             {manualSelectedCount > 0 ? 'Buy' : 'Auto-buy'}
           </button>
-          <button
-            className={subtleButtonClass}
-            disabled={!reserveMove || !isActionable}
-            onClick={() => {
-              if (reserveMove) {
-                submitAndReset(reserveMove);
-              }
-            }}
-            type="button"
-          >
-            Reserve
-          </button>
+          {source === 'market' ? (
+            <button
+              className={subtleButtonClass}
+              disabled={!reserveMove || !isActionable}
+              onClick={() => {
+                if (reserveMove) {
+                  submitAndReset(reserveMove);
+                }
+              }}
+              type="button"
+            >
+              Reserve
+            </button>
+          ) : null}
         </div>
-      </div>
-    );
-  };
-
-  const renderReservedSheet = (card: Card) => {
-    const purchaseMove = interaction?.purchaseReservedByCardId[card.id];
-    const isActionable =
-      interaction?.isCurrentUsersTurn &&
-      game?.turn.kind === 'main-action' &&
-      canSubmitRealtimeMoves;
-
-    return (
-      <div className="space-y-4">
-        <div className="w-24">
-          <SplendorCard card={card} size="compact" />
-        </div>
-        <button
-          className={primaryButtonClass}
-          disabled={!purchaseMove || !isActionable}
-          onClick={() => {
-            if (purchaseMove) {
-              submitAndReset(purchaseMove);
-            }
-          }}
-          type="button"
-        >
-          Buy
-        </button>
       </div>
     );
   };
@@ -1806,37 +1787,6 @@ export const RoomScene = ({
     return (
       <div className="space-y-4">
         <div className="rounded-[1.2rem] border border-white/8 bg-white/4 p-3">
-          <div className="rounded-[0.9rem] border border-white/8 bg-black/15 px-3 py-2">
-            <p className="text-[11px] uppercase tracking-[0.18em] text-stone-500">VP</p>
-            <p className="mt-1 text-3xl leading-none font-semibold text-amber-50">
-              {playerSummary.score}
-            </p>
-          </div>
-          <div className="mt-4 space-y-3">
-            <div>
-              <p className="mb-2 text-xs uppercase tracking-[0.22em] text-stone-500">Tableau bonuses</p>
-              <TableauStrip counts={playerSummary.tableauBonuses} />
-            </div>
-            <div>
-              <p className="mb-2 text-xs uppercase tracking-[0.22em] text-stone-500">Chips</p>
-              <ChipStrip counts={playerSummary.tokens} />
-            </div>
-            <div>
-              <p className="mb-2 text-xs uppercase tracking-[0.22em] text-stone-500">
-                Reserved ({playerSummary.reservedCount})
-              </p>
-              <ReservedMarkers tiers={playerSummary.reservedTiers} />
-            </div>
-            <div>
-              <p className="mb-2 text-xs uppercase tracking-[0.22em] text-stone-500">
-                Nobles ({playerSummary.nobleIds.length})
-              </p>
-              <NobleMarkers nobleIds={playerSummary.nobleIds} />
-            </div>
-          </div>
-        </div>
-
-        <div className="rounded-[1.2rem] border border-white/8 bg-white/4 p-3">
           <p className="text-xs uppercase tracking-[0.28em] text-stone-400">Tableau cards</p>
           <div className="mt-3 grid grid-cols-5 gap-1.5">
             {player.purchasedCards.length > 0 ? (
@@ -1949,16 +1899,15 @@ export const RoomScene = ({
       return {
         eyebrow: 'Market',
         title: 'Buy or reserve',
-        content: renderMarketSheet(selectedVisibleCard),
+        content: renderPurchaseSheet(selectedVisibleCard, 'market'),
       };
     }
 
     if (selection?.type === 'reserved-card' && selectedReservedCard) {
       return {
         eyebrow: 'Reserved card',
-        title: 'Reserved card',
-        subtitle: 'Reserved cards live off-board until you can afford them.',
-        content: renderReservedSheet(selectedReservedCard),
+        title: 'Buy reserved card',
+        content: renderPurchaseSheet(selectedReservedCard, 'reserved'),
       };
     }
 

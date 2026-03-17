@@ -92,6 +92,19 @@ export const ReservedCard: Story = {
   },
 };
 
+export const ReservedCardBuy: Story = {
+  args: {
+    initialSelection: {
+      type: 'reserved-card',
+      cardId: reservedPressureGame.players[0]!.reservedCards[0]!.id,
+    },
+    room: createRoom(reservedPressureGame, {
+      stateVersion: 17,
+      status: 'in_progress',
+    }),
+  },
+};
+
 export const BlindReserve: Story = {
   args: {
     initialSelection: {
