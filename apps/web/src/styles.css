@@ -173,92 +173,25 @@ code {
   }
 
   100% {
-    opacity: 0.04;
-    transform: translate3d(var(--card-dx), var(--card-dy), 0) scale(0.46) rotate(-6deg);
-  }
-}
-
-@keyframes card-flight-purchase-visible {
-  0% {
-    opacity: 0;
-    transform: translate3d(0, 0, 0) scale(0.94) rotate(0deg);
-  }
-
-  10% {
-    opacity: 1;
-  }
-
-  72% {
     opacity: 1;
     transform: translate3d(var(--card-dx), calc(var(--card-dy) - 10px), 0) scale(0.76)
       rotate(-4deg);
   }
-
-  80% {
-    opacity: 1;
-    transform: translate3d(var(--card-dx), calc(var(--card-dy) - 10px), 0) scale(0.76)
-      rotate(-4deg);
-  }
-
-  100% {
-    opacity: 0.04;
-    transform: translate3d(var(--card-dx), var(--card-dy), 0) scale(0.46) rotate(-6deg);
-  }
 }
 
-@keyframes card-flight-reserve-visible {
+@keyframes card-land {
   0% {
-    opacity: 0;
-    transform: translate3d(0, 0, 0) scale(0.94) rotate(0deg);
+    opacity: 1;
+    transform: translate3d(0, -10px, 0) scale(0.78) rotate(-4deg);
   }
 
-  10% {
+  24% {
     opacity: 1;
-  }
-
-  54% {
-    opacity: 1;
-    transform: translate3d(var(--card-dx), calc(var(--card-dy) - 6px), 0) scale(0.8)
-      rotate(-3deg);
-  }
-
-  72% {
-    opacity: 1;
-    transform: translate3d(var(--card-dx), calc(var(--card-dy) - 6px), 0) scale(0.8)
-      rotate(-3deg);
   }
 
   100% {
     opacity: 0.04;
-    transform: translate3d(var(--card-dx), var(--card-dy), 0) scale(0.46) rotate(-5deg);
-  }
-}
-
-@keyframes card-flight-purchase-reserved {
-  0% {
-    opacity: 0.14;
-    transform: translate3d(0, 0, 0) scale(0.52) rotate(0deg);
-  }
-
-  26% {
-    opacity: 1;
-    transform: translate3d(0, 0, 0) scale(0.98) rotate(0deg);
-  }
-
-  56% {
-    opacity: 1;
-    transform: translate3d(0, 0, 0) scale(0.98) rotate(0deg);
-  }
-
-  89.5% {
-    opacity: 1;
-    transform: translate3d(calc(var(--card-dx) * 0.72), calc(var(--card-dy) * 0.72), 0)
-      scale(0.76) rotate(-4deg);
-  }
-
-  100% {
-    opacity: 0.04;
-    transform: translate3d(var(--card-dx), var(--card-dy), 0) scale(0.46) rotate(-6deg);
+    transform: translate3d(0, 0, 0) scale(0.46) rotate(-6deg);
   }
 }
 
@@ -270,12 +203,12 @@ code {
 
   26% {
     opacity: 1;
-    transform: translate3d(0, 0, 0) scale(0.98) rotate(0deg);
+    transform: translate3d(0, -10px, 0) scale(0.76) rotate(-4deg);
   }
 
   100% {
     opacity: 1;
-    transform: translate3d(0, 0, 0) scale(0.98) rotate(0deg);
+    transform: translate3d(0, -10px, 0) scale(0.76) rotate(-4deg);
   }
 }
 
@@ -302,12 +235,10 @@ code {
 }
 
 @keyframes card-flight-flip {
-  0%,
-  74% {
+  0% {
     transform: rotateY(0deg);
   }
 
-  98%,
   100% {
     transform: rotateY(180deg);
   }
@@ -315,40 +246,25 @@ code {
 
 @keyframes card-flight-flip-reveal {
   0%,
-  26% {
+  42% {
     transform: rotateY(180deg);
   }
 
-  56%,
+  82%,
   100% {
     transform: rotateY(0deg);
   }
 }
 
-.card-flight-purchase-reserved {
-  animation: card-flight-purchase-reserved var(--anim-card-expand-ms)
-    cubic-bezier(0.16, 0.84, 0.24, 1);
-  perspective: 1000px;
-}
-
-.card-flight-purchase-reserved-inner {
-  animation: card-flight-flip-reveal var(--anim-flip-ms) cubic-bezier(0.2, 0.82, 0.22, 1);
-  height: 100%;
-  position: relative;
-  transform-style: preserve-3d;
-  width: 100%;
-}
-
 .card-expand-only {
   animation: card-expand-only var(--anim-card-expand-ms) cubic-bezier(0.16, 0.84, 0.24, 1);
+  animation-fill-mode: both;
   perspective: 1000px;
 }
 
 .card-expand-only-inner {
-  animation: card-flight-flip-reveal var(--anim-flip-ms) cubic-bezier(0.2, 0.82, 0.22, 1);
   height: 100%;
   position: relative;
-  transform-style: preserve-3d;
   width: 100%;
 }
 
@@ -414,41 +330,80 @@ code {
   will-change: transform, opacity;
 }
 
-.card-flight {
-  animation: card-flight var(--anim-card-arrival-ms) cubic-bezier(0.16, 0.84, 0.24, 1);
+.chip-flight-short {
+  animation: chip-flight var(--anim-card-arrival-ms) cubic-bezier(0.16, 0.84, 0.24, 1);
   animation-fill-mode: both;
   pointer-events: none;
   will-change: transform, opacity;
 }
 
-.card-flight-purchase-visible {
-  animation: card-flight-purchase-visible var(--anim-card-arrival-ms)
-    cubic-bezier(0.16, 0.84, 0.24, 1);
+.card-flight {
+  animation: card-flight var(--anim-flight-ms) cubic-bezier(0.16, 0.84, 0.24, 1);
+  animation-fill-mode: both;
+  pointer-events: none;
+  will-change: transform, opacity;
+}
+
+.card-hold {
+  opacity: 1;
+  transform: translate3d(0, -10px, 0) scale(0.76) rotate(-4deg);
+}
+
+.card-land {
+  animation: card-land var(--anim-card-arrival-ms) cubic-bezier(0.16, 0.84, 0.24, 1);
+  animation-fill-mode: both;
+  opacity: 1;
+  pointer-events: none;
+  transform: translate3d(0, -10px, 0) scale(0.76) rotate(-4deg);
+  will-change: transform, opacity;
 }
 
 .noble-flight {
-  animation: noble-flight var(--anim-card-arrival-ms) cubic-bezier(0.16, 0.84, 0.24, 1);
+  animation: noble-flight var(--anim-flight-ms) cubic-bezier(0.16, 0.84, 0.24, 1);
   animation-fill-mode: both;
   pointer-events: none;
   will-change: transform, opacity;
 }
 
-.card-flight-flip {
-  animation: card-flight-reserve-visible var(--anim-card-arrival-ms)
-    cubic-bezier(0.16, 0.84, 0.24, 1);
+.card-flip-only {
   perspective: 1000px;
 }
 
-.card-flight-flip-inner {
+.card-flip-only-inner {
   animation: card-flight-flip var(--anim-flip-ms) cubic-bezier(0.2, 0.82, 0.22, 1);
+  animation-fill-mode: both;
   height: 100%;
   position: relative;
+  transform: rotateY(0deg);
+  transform-style: preserve-3d;
+  width: 100%;
+}
+
+.card-flip-reveal-only-inner {
+  animation: card-flight-flip-reveal var(--anim-flip-ms) cubic-bezier(0.2, 0.82, 0.22, 1);
+  animation-fill-mode: both;
+  height: 100%;
+  position: relative;
+  transform: rotateY(180deg);
+  transform-style: preserve-3d;
+  width: 100%;
+}
+
+.card-flip-reveal-static-inner {
+  height: 100%;
+  position: relative;
+  transform: rotateY(180deg);
   transform-style: preserve-3d;
   width: 100%;
 }
 
 .card-flight-face {
   backface-visibility: hidden;
+}
+
+.card-overlay-pose {
+  transform: translate3d(0, -10px, 0) scale(0.76) rotate(-4deg);
+  transform-origin: center;
 }
 
 .receive-bulge {

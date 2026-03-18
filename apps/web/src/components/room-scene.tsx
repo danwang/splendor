@@ -225,12 +225,18 @@ const reservedMarkerStyles = [
 ] as const;
 
 const floatingChipStyles: Readonly<Record<GemColor, string>> = {
-  white: 'border border-stone-300/85 bg-stone-100 shadow-[0_4px_14px_rgba(255,255,255,0.2)]',
-  blue: 'bg-sky-400 shadow-[0_4px_14px_rgba(56,189,248,0.28)]',
-  green: 'bg-emerald-400 shadow-[0_4px_14px_rgba(52,211,153,0.28)]',
-  red: 'bg-rose-400 shadow-[0_4px_14px_rgba(251,113,133,0.28)]',
-  black: 'border border-stone-600/80 bg-stone-900 shadow-[0_4px_14px_rgba(24,24,27,0.32)]',
-  gold: 'bg-amber-300 shadow-[0_4px_14px_rgba(252,211,77,0.3)]',
+  white:
+    'border border-stone-300/85 bg-stone-100 text-stone-900 shadow-[0_0_0_1px_rgba(255,255,255,0.45),0_10px_22px_rgba(255,255,255,0.18)]',
+  blue:
+    'bg-sky-400 text-sky-950 shadow-[0_0_0_1px_rgba(125,211,252,0.22),0_10px_22px_rgba(56,189,248,0.28)]',
+  green:
+    'bg-emerald-400 text-emerald-950 shadow-[0_0_0_1px_rgba(110,231,183,0.22),0_10px_22px_rgba(52,211,153,0.28)]',
+  red:
+    'bg-rose-400 text-rose-950 shadow-[0_0_0_1px_rgba(253,164,175,0.22),0_10px_22px_rgba(251,113,133,0.28)]',
+  black:
+    'border border-stone-600/80 bg-stone-900 text-stone-100 shadow-[0_0_0_1px_rgba(120,113,108,0.35),0_10px_22px_rgba(24,24,27,0.34)]',
+  gold:
+    'bg-amber-300 text-amber-950 shadow-[0_0_0_1px_rgba(253,230,138,0.2),0_10px_22px_rgba(252,211,77,0.3)]',
 };
 
 const emptyPlayerReceiveAnimation: PlayerReceiveAnimation = {
@@ -238,6 +244,84 @@ const emptyPlayerReceiveAnimation: PlayerReceiveAnimation = {
   changedTableauColors: [],
   reservedChanged: false,
   scoreChanged: false,
+};
+
+const groupChipFlights = (
+  flights: ReturnType<typeof useAnimationRunner>['chipFlights'],
+) => {
+  const grouped = new Map<
+    string,
+    {
+      readonly color: GemColor;
+      count: number;
+      readonly delayMs?: number;
+      readonly durationMs?: number;
+      readonly from: string;
+      readonly fromX: number;
+      readonly fromY: number;
+      readonly id: string;
+      readonly to: string;
+      readonly toX: number;
+      readonly toY: number;
+    }
+  >();
+
+  for (const flight of flights) {
+    const key = `${flight.color}:${flight.from}:${flight.to}`;
+    const existing = grouped.get(key);
+
+    if (existing) {
+      existing.count += 1;
+      continue;
+    }
+
+    grouped.set(key, {
+      color: flight.color,
+      count: 1,
+      ...(flight.delayMs ? { delayMs: flight.delayMs } : {}),
+      ...(flight.durationMs ? { durationMs: flight.durationMs } : {}),
+      from: flight.from,
+      fromX: flight.fromX,
+      fromY: flight.fromY,
+      id: flight.id,
+      to: flight.to,
+      toX: flight.toX,
+      toY: flight.toY,
+    });
+  }
+
+  return [...grouped.values()];
+};
+
+const spreadGroupedChipFlights = (
+  flights: ReturnType<typeof groupChipFlights>,
+) => {
+  const pathGroups = new Map<string, typeof flights>();
+
+  for (const flight of flights) {
+    const key = `${flight.from}:${flight.to}`;
+    const existing = pathGroups.get(key) ?? [];
+    existing.push(flight);
+    pathGroups.set(key, existing);
+  }
+
+  return [...pathGroups.values()].flatMap((group) => {
+    const ordered = [...group].sort(
+      (left, right) => gemOrder.indexOf(left.color) - gemOrder.indexOf(right.color),
+    );
+
+    return ordered.map((flight, index) => {
+      const centeredIndex = index - (ordered.length - 1) / 2;
+      const laneOffsetX = centeredIndex * 18;
+      const laneOffsetY = Math.abs(centeredIndex) * 4;
+
+      return {
+        ...flight,
+        laneOffsetX,
+        laneOffsetY,
+      };
+    });
+  });
 };
 
 const deriveActiveAnimationState = (
@@ -248,7 +332,7 @@ const deriveActiveAnimationState = (
   readonly changedMarketCardIds: readonly string[];
   readonly changedPlayerIds: readonly string[];
 } => ({
-  changedBankColors: [],
+  changedBankColors: gemOrder.filter((color) => activeTargets.bulge.has(animationTargets.bankChip(color))),
   changedDeckTiers: cardTierOrder.filter((tier) => activeTargets.bulge.has(animationTargets.deck(tier))),
   changedMarketCardIds: Array.from(activeTargets.arriveCard)
     .filter((targetId) => targetId.startsWith('market:'))
@@ -267,7 +351,9 @@ const deriveTargetPlayerAnimations = (
     return {
       ...result,
       [player.id]: {
-        changedChipColors: [],
+        changedChipColors: gemOrder.filter((color) =>
+          activeTargets.bulge.has(animationTargets.playerChip(player.id, color)),
+        ),
         changedTableauColors: tokenColorOrder.filter((color) =>
           activeTargets.bulge.has(animationTargets.playerTableauBonus(player.id, color)),
         ),
@@ -296,19 +382,22 @@ const ChipStrip = ({
   counts,
   highlightedColors = [],
   immediateHighlightedColors = [],
+  targetRefByColor,
 }: {
   readonly counts: Readonly<Record<GemColor, number>>;
   readonly highlightedColors?: readonly GemColor[];
   readonly immediateHighlightedColors?: readonly GemColor[];
+  readonly targetRefByColor?: Readonly<Partial<Record<GemColor, (node: HTMLSpanElement | null) => void>>>;
 }) => (
   <div className="flex flex-wrap items-center gap-1">
     {gemOrder.map((color) => (
       <span
         key={`chip-${color}`}
+        ref={targetRefByColor?.[color]}
         className={`${counts[color] > 0 ? '' : 'opacity-25'} ${
           immediateHighlightedColors.includes(color) ? 'receive-bulge' : ''
         } ${
-          highlightedColors.includes(color) ? 'receive-bulge receive-bulge-delay' : ''
+          highlightedColors.includes(color) ? 'receive-bulge' : ''
         }`}
       >
         <GemPip color={color} count={counts[color]} size="sm" />
@@ -401,7 +490,7 @@ const NobleMarkers = ({ nobleIds }: { readonly nobleIds: readonly string[] }) =>
 );
 
 const PlayerSummaryRow = ({
-  chipTargetRef,
+  chipTargetRefByColor,
   currentUserId,
   isRecentlyUpdated,
   nobleTargetRef,
@@ -413,7 +502,9 @@ const PlayerSummaryRow = ({
   reservedTargetRef,
   tableauTargetRef,
 }: {
-  readonly chipTargetRef?: (node: HTMLDivElement | null) => void;
+  readonly chipTargetRefByColor?: Readonly<
+    Partial<Record<GemColor, (node: HTMLSpanElement | null) => void>>
+  >;
   readonly currentUserId: string | undefined;
   readonly isRecentlyUpdated: boolean;
   readonly nobleTargetRef?: (node: HTMLDivElement | null) => void;
@@ -505,11 +596,12 @@ const PlayerSummaryRow = ({
         <p className="whitespace-nowrap text-[9px] uppercase tracking-[0.18em] text-stone-500">
           Chips ({totalChips})
         </p>
-        <div ref={chipTargetRef} className="min-w-0">
+        <div className="min-w-0">
           <ChipStrip
             counts={player.tokens}
             highlightedColors={playerAnimation.changedChipColors}
             immediateHighlightedColors={sourceChipBulges}
+            {...(chipTargetRefByColor ? { targetRefByColor: chipTargetRefByColor } : {})}
           />
         </div>
       </div>
@@ -597,6 +689,13 @@ export const RoomScene = ({
   );
   const [replaySelection, setReplaySelection] = useState<ReplaySelection | null>(null);
   const targetNodeRefs = useRef<Partial<Record<string, HTMLElement | null>>>({});
+  const overlayRectCacheRef = useRef<{
+    readonly planId: string | null;
+    readonly rects: Map<string, { readonly height: number; readonly left: number; readonly top: number; readonly width: number }>;
+  }>({
+    planId: null,
+    rects: new Map(),
+  });
   const resolveTargetRect = useCallback((targetId: string) => {
     if (targetId === animationTargets.viewportNobleOrigin()) {
       const origin = getFallbackNobleFlightOrigin();
@@ -606,24 +705,6 @@ export const RoomScene = ({
         left: origin.x,
         top: origin.y,
         width: 68,
-      };
-    }
-
-    if (targetId.startsWith('player:') && targetId.includes(':chips:')) {
-      const [, playerId] = targetId.split(':');
-      const node = targetNodeRefs.current[animationTargets.playerChip(playerId!, 'white')];
-
-      if (!node) {
-        return null;
-      }
-
-      const rect = node.getBoundingClientRect();
-
-      return {
-        height: rect.height,
-        left: rect.left,
-        top: rect.top,
-        width: rect.width,
       };
     }
 
@@ -667,9 +748,23 @@ export const RoomScene = ({
   const interaction = game ? deriveInteractionModel(game, currentUserId) : null;
   const playerSummaries = game ? derivePlayerSummaries(game) : [];
   const animationState = deriveActiveAnimationState(animationFrame.activeTargets);
+  const chipFlights = animationFrame.chipFlights;
+  const shortChipFlights = animationFrame.shortChipFlights;
+  const groupedChipFlights = useMemo(() => groupChipFlights(chipFlights), [chipFlights]);
+  const groupedShortChipFlights = useMemo(
+    () => groupChipFlights(shortChipFlights),
+    [shortChipFlights],
+  );
+  const displayedChipFlights = useMemo(
+    () => spreadGroupedChipFlights(groupedChipFlights),
+    [groupedChipFlights],
+  );
+  const displayedShortChipFlights = useMemo(
+    () => spreadGroupedChipFlights(groupedShortChipFlights),
+    [groupedShortChipFlights],
+  );
   const playerAnimations = deriveTargetPlayerAnimations(animationFrame.activeTargets, playerSummaries);
   const sourceChipBulges = deriveSourceChipBulgeState(animationFrame.activeTargets, playerSummaries);
-  const chipFlights = animationFrame.chipFlights;
   const cardFlights = animationFrame.cardFlights;
   const isPresentingTransition = animationFrame.isAnimating;
   const wasFinishedRef = useRef(game?.status === 'finished');
@@ -910,6 +1005,41 @@ export const RoomScene = ({
         ) ?? null
     );
   }, [animationFrame.currentPlan]);
+  const primaryCardFlight = useMemo(() => {
+    const currentPlan = animationFrame.currentPlan;
+
+    if (!currentPlan) {
+      return null;
+    }
+
+    const expectedKind =
+      currentPlan.kind === 'market-purchase'
+        ? 'purchase-visible'
+        : currentPlan.kind === 'purchase-reserved'
+          ? 'purchase-reserved'
+          : currentPlan.kind === 'reserve-visible'
+            ? 'reserve-visible'
+            : currentPlan.kind === 'blind-reserve'
+              ? 'reserve-deck'
+              : null;
+
+    if (!expectedKind) {
+      return null;
+    }
+
+    return (
+      currentPlan.phases
+        .flatMap((phase) => phase.steps)
+        .find(
+          (
+            step,
+          ): step is Extract<AnimationStep, { readonly primitive: 'flight-card' }> =>
+            step.primitive === 'flight-card' &&
+            step.flights.some((flight) => flight.kind === expectedKind),
+        )
+        ?.flights.find((flight) => flight.kind === expectedKind) ?? null
+    );
+  }, [animationFrame.currentPlan]);
   const reservedExpandTargetId = Array.from(animationFrame.activeTargets.expandCard).find((targetId) =>
     targetId.startsWith('player:') && targetId.endsWith(':reserved'),
   );
@@ -924,8 +1054,45 @@ export const RoomScene = ({
       ? reservedPurchaseFlightStep.flights.find((flight) => flight.kind === 'purchase-reserved')?.tier ??
         null
       : null;
-  const reservedExpandRect =
-    reservedExpandTargetId ? resolveTargetRect(reservedExpandTargetId) : null;
+  const holdCardTargetId = Array.from(animationFrame.activeTargets.holdCard)[0] ?? null;
+  const landCardTargetId = Array.from(animationFrame.activeTargets.landCard)[0] ?? null;
+  const flipCardTargetId = reservedExpandTargetId
+    ? null
+    : Array.from(animationFrame.activeTargets.flipCard).find((targetId) => targetId !== reservedExpandTargetId) ??
+      null;
+  const overlayTargetId = holdCardTargetId ?? landCardTargetId ?? flipCardTargetId;
+  const currentPlanId = animationFrame.currentPlan?.id ?? null;
+
+  if (overlayRectCacheRef.current.planId !== currentPlanId) {
+    overlayRectCacheRef.current = {
+      planId: currentPlanId,
+      rects: new Map(),
+    };
+  }
+
+  const getStableOverlayRect = (targetId: string | null) => {
+    if (!targetId) {
+      return null;
+    }
+
+    const cachedRect = overlayRectCacheRef.current.rects.get(targetId);
+
+    if (cachedRect) {
+      return cachedRect;
+    }
+
+    const resolvedRect = resolveTargetRect(targetId);
+
+    if (!resolvedRect) {
+      return null;
+    }
+
+    overlayRectCacheRef.current.rects.set(targetId, resolvedRect);
+    return resolvedRect;
+  };
+
+  const reservedExpandRect = getStableOverlayRect(reservedExpandTargetId ?? null);
+  const overlayRect = getStableOverlayRect(overlayTargetId);
 
   const toggleBankColor = (color: TokenColor) => {
     setSelection({ type: 'bank' });
@@ -1041,9 +1208,7 @@ export const RoomScene = ({
                   className={`${color === 'gold' ? 'ml-2' : ''} ${
                     sourceChipBulges.bankColors.includes(color) ? 'receive-bulge' : ''
                   } ${
-                    animationState.changedBankColors.includes(color)
-                      ? 'receive-bulge receive-bulge-delay'
-                      : ''
+                    animationState.changedBankColors.includes(color) ? 'receive-bulge' : ''
                   }`}
                 >
                   <GemPip color={color} count={game.bank[color]} size="sm" />
@@ -1927,11 +2092,16 @@ export const RoomScene = ({
                 <div className="space-y-1.5">
                   {playerSummaries.map((player) => (
                     <PlayerSummaryRow
-                      chipTargetRef={(node) => {
-                        for (const color of gemOrder) {
-                          targetNodeRefs.current[animationTargets.playerChip(player.id, color)] = node;
-                        }
-                      }}
+                      chipTargetRefByColor={gemOrder.reduce<
+                        Partial<Record<GemColor, (node: HTMLSpanElement | null) => void>>
+                      >((result, color) => {
+                        return {
+                          ...result,
+                          [color]: (node: HTMLSpanElement | null) => {
+                            targetNodeRefs.current[animationTargets.playerChip(player.id, color)] = node;
+                          },
+                        };
+                      }, {})}
                       key={`summary-${player.id}`}
                       currentUserId={currentUserId}
                       isRecentlyUpdated={animationState.changedPlayerIds.includes(player.id)}
@@ -2037,26 +2207,58 @@ export const RoomScene = ({
         )}
       </div>
 
-      {chipFlights.map((flight) => (
+      {displayedChipFlights.map((flight) => (
         <span
           key={flight.id}
           aria-hidden="true"
-          className={`chip-flight fixed z-50 h-7 w-7 rounded-full ${floatingChipStyles[flight.color]}`}
+          className="chip-flight fixed z-50 inline-flex items-center justify-center"
           style={
             {
+              ...(flight.delayMs ? { animationDelay: `${flight.delayMs}ms` } : {}),
+              ...(flight.durationMs ? { animationDuration: `${flight.durationMs}ms` } : {}),
               left: `${flight.fromX}px`,
               top: `${flight.fromY}px`,
-              '--chip-dx': `${flight.toX - flight.fromX}px`,
-              '--chip-dy': `${flight.toY - flight.fromY}px`,
+              '--chip-dx': `${flight.toX - flight.fromX + flight.laneOffsetX}px`,
+              '--chip-dy': `${flight.toY - flight.fromY + flight.laneOffsetY}px`,
             } as CSSProperties
           }
-        />
+        >
+          <span
+            className={`inline-flex h-7 min-w-7 items-center justify-center rounded-full px-2 text-[11px] font-bold ring-1 ring-white/18 shadow-[0_10px_22px_rgba(0,0,0,0.34)] ${floatingChipStyles[flight.color]}`}
+          >
+            {flight.count}
+          </span>
+        </span>
+      ))}
+
+      {displayedShortChipFlights.map((flight) => (
+        <span
+          key={`short-${flight.id}`}
+          aria-hidden="true"
+          className="chip-flight-short fixed z-50 inline-flex items-center justify-center"
+          style={
+            {
+              ...(flight.delayMs ? { animationDelay: `${flight.delayMs}ms` } : {}),
+              ...(flight.durationMs ? { animationDuration: `${flight.durationMs}ms` } : {}),
+              left: `${flight.fromX}px`,
+              top: `${flight.fromY}px`,
+              '--chip-dx': `${flight.toX - flight.fromX + flight.laneOffsetX}px`,
+              '--chip-dy': `${flight.toY - flight.fromY + flight.laneOffsetY}px`,
+            } as CSSProperties
+          }
+        >
+          <span
+            className={`inline-flex h-7 min-w-7 items-center justify-center rounded-full px-2 text-[11px] font-bold ring-1 ring-white/18 shadow-[0_10px_22px_rgba(0,0,0,0.34)] ${floatingChipStyles[flight.color]}`}
+          >
+            {flight.count}
+          </span>
+        </span>
       ))}
 
       {reservedExpandRect && reservedExpandCard && reservedExpandTier ? (
         <div
           aria-hidden="true"
-          className="fixed z-50 pointer-events-none w-[4.6rem] card-expand-only"
+          className="fixed z-50 pointer-events-none w-[4.6rem] card-expand-only card-overlay-pose"
           style={
             {
               left: `${reservedExpandRect.left}px`,
@@ -2064,17 +2266,80 @@ export const RoomScene = ({
             } as CSSProperties
           }
         >
-          <div className="card-expand-only-inner relative aspect-[5/7] w-full">
+          <div className="card-flip-reveal-static-inner relative aspect-[5/7] w-full">
+            <div className="card-flight-face absolute inset-0">
+              <SplendorCard card={reservedExpandCard} size="compact" />
+            </div>
             <div
               className="card-flight-face absolute inset-0"
               style={{ transform: 'rotateY(180deg)' }}
             >
               <DeckCard hideCount remainingCount={0} size="compact" tier={reservedExpandTier} />
             </div>
-            <div className="card-flight-face absolute inset-0">
-              <SplendorCard card={reservedExpandCard} size="compact" />
-            </div>
           </div>
+        </div>
+      ) : null}
+
+      {overlayRect && primaryCardFlight ? (
+        <div
+          aria-hidden="true"
+          className={`fixed z-50 pointer-events-none w-[4.6rem] ${
+            holdCardTargetId
+              ? 'card-hold'
+              : landCardTargetId
+                ? 'card-land card-overlay-pose'
+                : flipCardTargetId
+                  ? 'card-flip-only card-overlay-pose'
+                  : ''
+          }`}
+          style={
+            {
+              left: `${overlayRect.left}px`,
+              top: `${overlayRect.top}px`,
+            } as CSSProperties
+          }
+        >
+          {flipCardTargetId &&
+          primaryCardFlight.kind === 'reserve-visible' &&
+          primaryCardFlight.card &&
+          primaryCardFlight.tier ? (
+            <div className="card-flip-only-inner relative aspect-[5/7] w-full">
+              <div className="card-flight-face absolute inset-0">
+                <SplendorCard card={primaryCardFlight.card} size="compact" />
+              </div>
+              <div
+                className="card-flight-face absolute inset-0"
+                style={{ transform: 'rotateY(180deg)' }}
+              >
+                <DeckCard hideCount remainingCount={0} size="compact" tier={primaryCardFlight.tier} />
+              </div>
+            </div>
+          ) : flipCardTargetId &&
+            primaryCardFlight.kind === 'purchase-reserved' &&
+            primaryCardFlight.card &&
+            primaryCardFlight.tier ? (
+            <div className="card-flip-reveal-only-inner relative aspect-[5/7] w-full">
+              <div className="card-flight-face absolute inset-0">
+                <SplendorCard card={primaryCardFlight.card} size="compact" />
+              </div>
+              <div
+                className="card-flight-face absolute inset-0"
+                style={{ transform: 'rotateY(180deg)' }}
+              >
+                <DeckCard hideCount remainingCount={0} size="compact" tier={primaryCardFlight.tier} />
+              </div>
+            </div>
+          ) : primaryCardFlight.kind === 'reserve-deck' && primaryCardFlight.tier ? (
+            <DeckCard hideCount remainingCount={0} size="compact" tier={primaryCardFlight.tier} />
+          ) : primaryCardFlight.kind === 'reserve-visible' && primaryCardFlight.tier ? (
+            holdCardTargetId ? (
+              <SplendorCard card={primaryCardFlight.card!} size="compact" />
+            ) : (
+              <DeckCard hideCount remainingCount={0} size="compact" tier={primaryCardFlight.tier} />
+            )
+          ) : primaryCardFlight.card ? (
+            <SplendorCard card={primaryCardFlight.card} size="compact" />
+          ) : null}
         </div>
       ) : null}
 
@@ -2084,17 +2349,11 @@ export const RoomScene = ({
           aria-hidden="true"
           className={`fixed z-50 pointer-events-none ${
             flight.kind === 'noble' ? 'noble-flight w-[4.25rem]' : 'card-flight w-[4.6rem]'
-          } ${
-            flight.kind === 'purchase-visible'
-              ? 'card-flight-purchase-visible'
-              : ''
-          } ${
-            flight.kind === 'reserve-visible'
-              ? 'card-flight-flip'
-              : ''
           }`}
           style={
             {
+              ...(flight.delayMs ? { animationDelay: `${flight.delayMs}ms` } : {}),
+              ...(flight.durationMs ? { animationDuration: `${flight.durationMs}ms` } : {}),
               left: `${flight.fromX}px`,
               top: `${flight.fromY}px`,
               '--card-dx': `${flight.toX - flight.fromX}px`,
@@ -2106,18 +2365,6 @@ export const RoomScene = ({
             <NobleTile noble={noblesById.get(flight.nobleId ?? '') ?? NOBLES[0]!} size="compact" />
           ) : flight.kind === 'reserve-deck' && flight.tier ? (
             <DeckCard hideCount remainingCount={0} size="compact" tier={flight.tier} />
-          ) : flight.kind === 'reserve-visible' && flight.card && flight.tier ? (
-            <div className="card-flight-flip-inner relative aspect-[5/7] w-full">
-              <div className="card-flight-face absolute inset-0">
-                <SplendorCard card={flight.card} size="compact" />
-              </div>
-              <div
-                className="card-flight-face absolute inset-0"
-                style={{ transform: 'rotateY(180deg)' }}
-              >
-                <DeckCard hideCount remainingCount={0} size="compact" tier={flight.tier} />
-              </div>
-            </div>
           ) : flight.card ? (
             <SplendorCard card={flight.card} size="compact" />
           ) : null}

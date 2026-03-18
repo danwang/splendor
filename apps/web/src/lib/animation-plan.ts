@@ -125,6 +125,69 @@ const createReservedPurchaseDeparturePresentation = (
   };
 };
 
+const createReservedPurchaseCardDeparturePresentation = (
+  previousRoom: PublicRoomState,
+  nextRoom: PublicRoomState,
+): PublicRoomState => {
+  if (!previousRoom.game || !nextRoom.game) {
+    return previousRoom;
+  }
+
+  const { nextActor, previousActor } = getActorPair(previousRoom.game, nextRoom.game);
+
+  if (!previousActor || !nextActor) {
+    return previousRoom;
+  }
+
+  return {
+    ...previousRoom,
+    game: {
+      ...previousRoom.game,
+      players: previousRoom.game.players.map((player) =>
+        player.identity.id === previousActor.identity.id
+          ? {
+              ...player,
+              reservedCards: nextActor.reservedCards,
+            }
+          : player,
+      ),
+    },
+  };
+};
+
+const createChipArrivalPresentation = (
+  baseRoom: PublicRoomState,
+  nextRoom: PublicRoomState,
+): PublicRoomState => {
+  if (!baseRoom.game || !nextRoom.game) {
+    return baseRoom;
+  }
+
+  const baseGame = baseRoom.game;
+  const nextGame = nextRoom.game;
+  const { nextActor, previousActor } = getActorPair(baseGame, nextGame);
+
+  if (!previousActor || !nextActor) {
+    return baseRoom;
+  }
+
+  return {
+    ...baseRoom,
+    game: {
+      ...baseGame,
+      bank: nextGame.bank,
+      players: baseGame.players.map((player) =>
+        player.identity.id === previousActor.identity.id
+          ? {
+              ...player,
+              tokens: nextActor.tokens,
+            }
+          : player,
+      ),
+    },
+  };
+};
+
 const createPostFlightPresentation = (
   previousRoom: PublicRoomState,
   nextRoom: PublicRoomState,
@@ -202,8 +265,14 @@ const createPurchaseFlight = (
   nextPlayer: GameState['players'][number],
   card: Card,
   flightIndex: number,
+  options?: {
+    readonly delayMs?: number;
+    readonly durationMs?: number;
+  },
 ): AnimationCardFlight => ({
   card,
+  ...(options?.delayMs !== undefined ? { delayMs: options.delayMs } : {}),
+  ...(options?.durationMs !== undefined ? { durationMs: options.durationMs } : {}),
   from: previousPlayer.reservedCards.some((entry) => entry.id === card.id)
     ? animationTargets.playerReserved(nextPlayer.identity.id)
     : animationTargets.marketCard(card.id),
@@ -237,6 +306,27 @@ const createReserveFlight = (
     to: animationTargets.playerReserved(nextPlayer.identity.id),
   };
 };
+
+const createReserveChipFlights = (
+  previousGame: GameState,
+  nextGame: GameState,
+): readonly AnimationChipFlight[] =>
+  createChipFlights(previousGame, nextGame).map((flight) => ({
+    ...flight,
+    delayMs: 250,
+    durationMs: animationTiming.flightDurationMs,
+  }));
+
+const createDelayedChipFlights = (
+  previousGame: GameState,
+  nextGame: GameState,
+  delayMs: number,
+): readonly AnimationChipFlight[] =>
+  createChipFlights(previousGame, nextGame).map((flight) => ({
+    ...flight,
+    delayMs,
+    durationMs: animationTiming.flightDurationMs,
+  }));
 
 const deriveTransitionKind = (
   previousRoom: PublicRoomState,
@@ -351,6 +441,21 @@ const createFinalPhase = (nextRoom: PublicRoomState): AnimationPhase => ({
   steps: [],
 });
 
+const createWaitPhase = (
+  nextRoom: PublicRoomState,
+  checkpointId: AnimationCheckpoint['id'],
+  presentedRoom: PublicRoomState,
+  suffix: string,
+  durationMs: number,
+  steps: readonly AnimationStep[] = [{ primitive: 'wait' }],
+): AnimationPhase => ({
+  checkpointId,
+  durationMs,
+  id: createSemanticId(nextRoom, suffix),
+  presentedRoom,
+  steps,
+});
+
 const createChipTakePlan = (
   previousRoom: PublicRoomState,
   nextRoom: PublicRoomState,
@@ -360,7 +465,7 @@ const createChipTakePlan = (
   }
 
   const departureRoom = createChipTransferPresentation(previousRoom, nextRoom);
-  const arrivalRoom = createPostFlightPresentation(previousRoom, nextRoom);
+  const arrivalRoom = createChipArrivalPresentation(departureRoom, nextRoom);
   const { nextActor, previousActor } = getActorPair(previousRoom.game, nextRoom.game);
 
   if (!previousActor || !nextActor) {
@@ -413,7 +518,7 @@ const createDiscardPlan = (
   }
 
   const departureRoom = createChipTransferPresentation(previousRoom, nextRoom);
-  const arrivalRoom = createPostFlightPresentation(previousRoom, nextRoom);
+  const arrivalRoom = createChipArrivalPresentation(departureRoom, nextRoom);
   const { nextActor, previousActor } = getActorPair(previousRoom.game, nextRoom.game);
 
   if (!previousActor || !nextActor) {
@@ -466,6 +571,7 @@ const createReserveVisiblePlan = (
   }
 
   const departureRoom = createChipTransferPresentation(previousRoom, nextRoom);
+  const chipArrivalRoom = createChipArrivalPresentation(departureRoom, nextRoom);
   const arrivalRoom = createPostFlightPresentation(previousRoom, nextRoom);
   const { nextActor, previousActor } = getActorPair(previousRoom.game, nextRoom.game);
 
@@ -497,14 +603,62 @@ const createReserveVisiblePlan = (
     phases: [
       {
         checkpointId: 'departure',
-        durationMs: animationTiming.flightDurationMs,
+        durationMs:
+          sourceBankTargets.length > 0
+            ? animationTiming.flightDurationMs + 250
+            : animationTiming.flightDurationMs,
         id: createSemanticId(nextRoom, 'phase-departure'),
         presentedRoom: departureRoom,
         steps: [
-          { primitive: 'bulge', targets: sourceBankTargets },
+          ...(sourceBankTargets.length > 0
+            ? [
+                { primitive: 'bulge', targets: sourceBankTargets } as const,
+                {
+                  primitive: 'flight-chip',
+                  flights: createReserveChipFlights(previousRoom.game, nextRoom.game),
+                } as const,
+              ]
+            : []),
           { primitive: 'fade-placeholder', targets: [animationTargets.marketCard(reservedCard.id)] },
           { primitive: 'flight-card', flights: [createReserveFlight(nextRoom, previousRoom.game, nextActor, reservedCard, 0)] },
-          { primitive: 'flight-chip', flights: createChipFlights(previousRoom.game, nextRoom.game) },
+        ],
+      },
+      createWaitPhase(
+        nextRoom,
+        'arrival',
+        chipArrivalRoom,
+        'phase-hold',
+        Math.max(animationTiming.cardHoldReserveVisibleMs, animationTiming.bulgeDurationMs),
+        [
+          ...(destinationChipTargets.length > 0
+            ? [{ primitive: 'bulge', targets: destinationChipTargets } as const]
+            : []),
+          {
+            primitive: 'hold-card',
+            targets: [animationTargets.playerReserved(nextActor.identity.id)],
+          },
+        ],
+      ),
+      createWaitPhase(
+        nextRoom,
+        'arrival',
+        chipArrivalRoom,
+        'phase-flip',
+        animationTiming.flipDurationMs,
+        [
+          {
+            primitive: 'flip-card',
+            targets: [animationTargets.playerReserved(nextActor.identity.id)],
+          },
+        ],
+      ),
+      {
+        checkpointId: 'arrival',
+        durationMs: animationTiming.cardArrivalDurationMs,
+        id: createSemanticId(nextRoom, 'phase-land'),
+        presentedRoom: chipArrivalRoom,
+        steps: [
+          { primitive: 'land-card', targets: [animationTargets.playerReserved(nextActor.identity.id)] },
         ],
       },
       {
@@ -514,7 +668,6 @@ const createReserveVisiblePlan = (
         presentedRoom: arrivalRoom,
         steps: createArrivalSteps(previousRoom, nextRoom, nextActor.identity.id, [
           { primitive: 'bulge', targets: [animationTargets.playerReserved(nextActor.identity.id)] },
-          { primitive: 'bulge', targets: destinationChipTargets },
         ]),
       },
       createFinalPhase(nextRoom),
@@ -531,6 +684,7 @@ const createBlindReservePlan = (
   }
 
   const departureRoom = createChipTransferPresentation(previousRoom, nextRoom);
+  const chipArrivalRoom = createChipArrivalPresentation(departureRoom, nextRoom);
   const arrivalRoom = createPostFlightPresentation(previousRoom, nextRoom);
   const { nextActor, previousActor } = getActorPair(previousRoom.game, nextRoom.game);
 
@@ -562,13 +716,49 @@ const createBlindReservePlan = (
     phases: [
       {
         checkpointId: 'departure',
-        durationMs: animationTiming.flightDurationMs,
+        durationMs:
+          sourceBankTargets.length > 0
+            ? animationTiming.flightDurationMs + 250
+            : animationTiming.flightDurationMs,
         id: createSemanticId(nextRoom, 'phase-departure'),
         presentedRoom: departureRoom,
         steps: [
-          { primitive: 'bulge', targets: sourceBankTargets },
+          ...(sourceBankTargets.length > 0
+            ? [
+                { primitive: 'bulge', targets: sourceBankTargets } as const,
+                {
+                  primitive: 'flight-chip',
+                  flights: createReserveChipFlights(previousRoom.game, nextRoom.game),
+                } as const,
+              ]
+            : []),
           { primitive: 'flight-card', flights: [createReserveFlight(nextRoom, previousRoom.game, nextActor, reservedCard, 0)] },
-          { primitive: 'flight-chip', flights: createChipFlights(previousRoom.game, nextRoom.game) },
+        ],
+      },
+      ...(destinationChipTargets.length > 0
+        ? [
+            {
+              checkpointId: 'arrival' as const,
+              durationMs: animationTiming.bulgeDurationMs,
+              id: createSemanticId(nextRoom, 'phase-chip-arrival'),
+              presentedRoom: chipArrivalRoom,
+              steps: [
+                { primitive: 'bulge' as const, targets: destinationChipTargets },
+                {
+                  primitive: 'hold-card' as const,
+                  targets: [animationTargets.playerReserved(nextActor.identity.id)],
+                },
+              ],
+            },
+          ]
+        : []),
+      {
+        checkpointId: 'arrival',
+        durationMs: animationTiming.cardArrivalDurationMs,
+        id: createSemanticId(nextRoom, 'phase-land'),
+        presentedRoom: destinationChipTargets.length > 0 ? chipArrivalRoom : departureRoom,
+        steps: [
+          { primitive: 'land-card', targets: [animationTargets.playerReserved(nextActor.identity.id)] },
         ],
       },
       {
@@ -578,7 +768,6 @@ const createBlindReservePlan = (
         presentedRoom: arrivalRoom,
         steps: createArrivalSteps(previousRoom, nextRoom, nextActor.identity.id, [
           { primitive: 'bulge', targets: [animationTargets.playerReserved(nextActor.identity.id)] },
-          { primitive: 'bulge', targets: destinationChipTargets },
         ]),
       },
       createFinalPhase(nextRoom),
@@ -595,6 +784,7 @@ const createMarketPurchasePlan = (
   }
 
   const departureRoom = createChipTransferPresentation(previousRoom, nextRoom);
+  const chipArrivalRoom = createChipArrivalPresentation(departureRoom, nextRoom);
   const arrivalRoom = createPostFlightPresentation(previousRoom, nextRoom);
   const { nextActor, previousActor } = getActorPair(previousRoom.game, nextRoom.game);
 
@@ -626,23 +816,45 @@ const createMarketPurchasePlan = (
     phases: [
       {
         checkpointId: 'departure',
-        durationMs: animationTiming.flightDurationMs,
+        durationMs: animationTiming.flightDurationMs + animationTiming.purchaseCardStaggerMs,
         id: createSemanticId(nextRoom, 'phase-departure'),
         presentedRoom: departureRoom,
         steps: [
           { primitive: 'bulge', targets: sourcePlayerChipTargets },
           { primitive: 'fade-placeholder', targets: [animationTargets.marketCard(purchasedCard.id)] },
-          { primitive: 'flight-card', flights: [createPurchaseFlight(nextRoom, previousActor, nextActor, purchasedCard, 0)] },
+          {
+            primitive: 'flight-card',
+            flights: [
+              createPurchaseFlight(nextRoom, previousActor, nextActor, purchasedCard, 0, {
+                delayMs: animationTiming.purchaseCardStaggerMs,
+                durationMs: animationTiming.flightDurationMs,
+              }),
+            ],
+          },
           { primitive: 'flight-chip', flights: createChipFlights(previousRoom.game, nextRoom.game) },
         ],
       },
+      createWaitPhase(
+        nextRoom,
+        'arrival',
+        chipArrivalRoom,
+        'phase-hold',
+        Math.max(animationTiming.cardHoldPurchaseVisibleMs, animationTiming.bulgeDurationMs),
+        [
+          ...(bankTargets.length > 0 ? [{ primitive: 'bulge', targets: bankTargets } as const] : []),
+          {
+            primitive: 'hold-card',
+            targets: [animationTargets.playerTableau(nextActor.identity.id)],
+          },
+        ],
+      ),
       {
         checkpointId: 'arrival',
         durationMs: animationTiming.settleDurationMs,
         id: createSemanticId(nextRoom, 'phase-arrival'),
         presentedRoom: arrivalRoom,
         steps: createArrivalSteps(previousRoom, nextRoom, nextActor.identity.id, [
-          { primitive: 'bulge', targets: bankTargets },
+          { primitive: 'land-card', targets: [animationTargets.playerTableau(nextActor.identity.id)] },
           { primitive: 'bulge', targets: [animationTargets.playerTableau(nextActor.identity.id)] },
           { primitive: 'bulge', targets: [animationTargets.playerTableauBonus(nextActor.identity.id, purchasedCard.bonus)] },
           { primitive: 'flip-number', targets: [animationTargets.playerScore(nextActor.identity.id)] },
@@ -661,7 +873,9 @@ const createPurchaseReservedPlan = (
     return null;
   }
 
+  const cardDepartureRoom = createReservedPurchaseCardDeparturePresentation(previousRoom, nextRoom);
   const departureRoom = createReservedPurchaseDeparturePresentation(previousRoom, nextRoom);
+  const chipArrivalRoom = createChipArrivalPresentation(departureRoom, nextRoom);
   const arrivalRoom = createPostFlightPresentation(previousRoom, nextRoom);
   const { nextActor, previousActor } = getActorPair(previousRoom.game, nextRoom.game);
 
@@ -695,12 +909,37 @@ const createPurchaseReservedPlan = (
         checkpointId: 'departure',
         durationMs: animationTiming.cardExpandDurationMs,
         id: createSemanticId(nextRoom, 'phase-expand'),
-        presentedRoom: departureRoom,
+        presentedRoom: cardDepartureRoom,
         steps: [
           { primitive: 'expand-card', targets: [animationTargets.playerReserved(nextActor.identity.id)] },
-          { primitive: 'flip-card', targets: [animationTargets.playerReserved(nextActor.identity.id)] },
         ],
       },
+      createWaitPhase(
+        nextRoom,
+        'departure',
+        cardDepartureRoom,
+        'phase-flip',
+        animationTiming.flipDurationMs,
+        [
+          {
+            primitive: 'flip-card',
+            targets: [animationTargets.playerReserved(nextActor.identity.id)],
+          },
+        ],
+      ),
+      createWaitPhase(
+        nextRoom,
+        'departure',
+        cardDepartureRoom,
+        'phase-hold',
+        animationTiming.cardHoldPurchaseReservedMs,
+        [
+          {
+            primitive: 'hold-card',
+            targets: [animationTargets.playerReserved(nextActor.identity.id)],
+          },
+        ],
+      ),
       {
         checkpointId: 'departure',
         durationMs: animationTiming.flightDurationMs,
@@ -708,22 +947,60 @@ const createPurchaseReservedPlan = (
         presentedRoom: departureRoom,
         steps: [
           { primitive: 'bulge', targets: sourcePlayerChipTargets },
-          { primitive: 'flight-card', flights: [createPurchaseFlight(nextRoom, previousActor, nextActor, purchasedCard, 0)] },
-          { primitive: 'flight-chip', flights: createChipFlights(previousRoom.game, nextRoom.game) },
+          {
+            primitive: 'flight-card',
+            flights: [createPurchaseFlight(nextRoom, previousActor, nextActor, purchasedCard, 0)],
+          },
+          {
+            primitive: 'flight-chip',
+            flights: createDelayedChipFlights(
+              previousRoom.game,
+              nextRoom.game,
+              animationTiming.purchaseReservedChipDelayMs,
+            ),
+          },
         ],
       },
       {
         checkpointId: 'arrival',
-        durationMs: animationTiming.settleDurationMs,
-        id: createSemanticId(nextRoom, 'phase-arrival'),
-        presentedRoom: arrivalRoom,
-        steps: createArrivalSteps(previousRoom, nextRoom, nextActor.identity.id, [
-          { primitive: 'bulge', targets: bankTargets },
-          { primitive: 'bulge', targets: [animationTargets.playerTableau(nextActor.identity.id)] },
-          { primitive: 'bulge', targets: [animationTargets.playerTableauBonus(nextActor.identity.id, purchasedCard.bonus)] },
-          { primitive: 'flip-number', targets: [animationTargets.playerScore(nextActor.identity.id)] },
-        ]),
+        durationMs: bankTargets.length > 0 ? animationTiming.bulgeDurationMs : animationTiming.settleDurationMs,
+        id: createSemanticId(nextRoom, bankTargets.length > 0 ? 'phase-chip-arrival' : 'phase-arrival'),
+        presentedRoom: bankTargets.length > 0 ? chipArrivalRoom : arrivalRoom,
+        steps:
+          bankTargets.length > 0
+            ? [
+                { primitive: 'bulge', targets: bankTargets },
+                {
+                  primitive: 'hold-card',
+                  targets: [animationTargets.playerTableau(nextActor.identity.id)],
+                },
+              ]
+            : createArrivalSteps(previousRoom, nextRoom, nextActor.identity.id, [
+                { primitive: 'land-card', targets: [animationTargets.playerTableau(nextActor.identity.id)] },
+                { primitive: 'bulge', targets: [animationTargets.playerTableau(nextActor.identity.id)] },
+                { primitive: 'bulge', targets: [animationTargets.playerTableauBonus(nextActor.identity.id, purchasedCard.bonus)] },
+                { primitive: 'flip-number', targets: [animationTargets.playerScore(nextActor.identity.id)] },
+              ]),
       },
+      ...(bankTargets.length > 0
+        ? [
+            {
+              checkpointId: 'arrival' as const,
+              durationMs: animationTiming.settleDurationMs,
+              id: createSemanticId(nextRoom, 'phase-arrival'),
+              presentedRoom: arrivalRoom,
+              steps: createArrivalSteps(previousRoom, nextRoom, nextActor.identity.id, [
+                { primitive: 'land-card' as const, targets: [animationTargets.playerTableau(nextActor.identity.id)] },
+                { primitive: 'bulge' as const, targets: [animationTargets.playerTableau(nextActor.identity.id)] },
+                {
+                  primitive: 'bulge' as const,
+                  targets: [animationTargets.playerTableauBonus(nextActor.identity.id, purchasedCard.bonus)],
+                },
+                { primitive: 'flip-number' as const, targets: [animationTargets.playerScore(nextActor.identity.id)] },
+              ]),
+            },
+          ]
+        : []),
       createFinalPhase(nextRoom),
     ],
   };

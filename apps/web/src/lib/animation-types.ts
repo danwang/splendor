@@ -14,7 +14,9 @@ export type AnimationPrimitiveName =
   | 'flight-chip'
   | 'flip-card'
   | 'flip-number'
+  | 'hold-card'
   | 'highlight-row'
+  | 'land-card'
   | 'wait';
 
 export type DerivedTransitionKind =
@@ -36,6 +38,8 @@ export interface AnimationCheckpoint {
 
 export interface AnimationChipFlight {
   readonly color: GemColor;
+  readonly delayMs?: number;
+  readonly durationMs?: number;
   readonly from: AnimationTargetId;
   readonly id: string;
   readonly to: AnimationTargetId;
@@ -43,6 +47,8 @@ export interface AnimationChipFlight {
 
 export interface AnimationCardFlight {
   readonly card?: Card;
+  readonly delayMs?: number;
+  readonly durationMs?: number;
   readonly from: AnimationTargetId;
   readonly id: string;
   readonly kind:
@@ -62,12 +68,20 @@ export type AnimationStep =
       readonly targets: readonly AnimationTargetId[];
     }
   | {
+      readonly primitive: 'hold-card' | 'land-card';
+      readonly targets: readonly AnimationTargetId[];
+    }
+  | {
       readonly flights: readonly AnimationCardFlight[];
       readonly primitive: 'flight-card';
     }
   | {
       readonly flights: readonly AnimationChipFlight[];
       readonly primitive: 'flight-chip';
+    }
+  | {
+      readonly flights: readonly AnimationChipFlight[];
+      readonly primitive: 'flight-chip-short';
     }
   | {
       readonly primitive: 'wait';
@@ -96,20 +110,29 @@ export interface AnimationTargetState {
   readonly fadePlaceholder: ReadonlySet<AnimationTargetId>;
   readonly flipCard: ReadonlySet<AnimationTargetId>;
   readonly flipNumber: ReadonlySet<AnimationTargetId>;
+  readonly holdCard: ReadonlySet<AnimationTargetId>;
   readonly highlightRow: ReadonlySet<AnimationTargetId>;
+  readonly landCard: ReadonlySet<AnimationTargetId>;
 }
 
 export interface ResolvedChipFlight {
   readonly color: GemColor;
+  readonly delayMs?: number;
+  readonly durationMs?: number;
+  readonly from: AnimationTargetId;
   readonly fromX: number;
   readonly fromY: number;
   readonly id: string;
+  readonly speed: 'normal' | 'short';
+  readonly to: AnimationTargetId;
   readonly toX: number;
   readonly toY: number;
 }
 
 export interface ResolvedCardFlight {
   readonly card?: Card;
+  readonly delayMs?: number;
+  readonly durationMs?: number;
   readonly fromX: number;
   readonly fromY: number;
   readonly id: string;

@@ -16,6 +16,8 @@ After this change, the room board no longer manages chip, card, noble, and turn-
 - [x] 2026-03-17 20:54 EDT Centralized CSS timing through animation variables and aligned the main room styles with the shared timing config.
 - [x] 2026-03-17 20:57 EDT Added Vitest coverage for animation-plan derivation and pure runner phase progression, and wired the web workspace test script/config to run them.
 - [x] 2026-03-17 21:00 EDT Ran final validation: targeted lint, web tests, web typecheck, web build, and Storybook build all passed. Storybook still emits the existing large-chunk warning, but the build completes successfully.
+- [x] 2026-03-17 23:14 EDT Refactored the card move recipes again so `reserve-visible`, `market-purchase`, and `purchase-reserved` use explicit `hold-card` / `flip-card` / `land-card` phases with millisecond timing instead of percentage-tuned one-shot keyframes. Updated primitive Storybook previews and plan tests, then reran web tests, typecheck, lint, and build.
+- [x] 2026-03-17 23:59 EDT Folded chip destination updates back into plan-owned arrival checkpoints instead of view-level delayed bulge maps. `RoomScene` now reacts directly to `bulge` targets for bank/player chip stacks, and reserve/purchase recipes use explicit chip-arrival presentations so destination counts update and pulse at arrival time rather than after later settle phases.
 
 ## Surprises & Discoveries
 
@@ -24,6 +26,12 @@ After this change, the room board no longer manages chip, card, noble, and turn-
 
 - Observation: Using `defineConfig` from `vitest/config` directly in `apps/web/vite.config.ts` caused a Vite plugin type mismatch because the workspace was resolving different Vite type identities.
   Evidence: `npm run typecheck --workspace @splendor/web` reported incompatible `Plugin<any>` types until the Vitest settings were moved to a dedicated `apps/web/vitest.config.ts`.
+
+- Observation: The declarative plan/runner split solved turn-handoff timing, but the old CSS still encoded hidden choreography for card moves, which made small pause adjustments depend on fragile percentage edits.
+  Evidence: `reserve-visible` and `purchase-visible` both needed repeated keyframe-percentage tuning for simple “pause face-up 100ms longer” requests until the card phases were split into explicit `hold-card` and `land-card` stages.
+
+- Observation: Chip destination bulges were still effectively owned by `RoomScene` even after the declarative refactor, because player/bank chip highlights were being derived from overlay flight delays rather than from plan checkpoints.
+  Evidence: chip-take source updates and flights were stable, but destination pulses lagged behind later card settle phases until reserve/purchase recipes introduced explicit chip-arrival presentations and the UI switched back to using `activeTargets.bulge` directly for chip stacks.
 
 ## Decision Log
 
@@ -43,9 +51,17 @@ After this change, the room board no longer manages chip, card, noble, and turn-
   Rationale: This avoids the Vite type-resolution conflict in the workspace and keeps build and test configuration independent.
   Date/Author: 2026-03-17 / Codex
 
+- Decision: Introduce `hold-card` and `land-card` as target-state primitives rather than continuing to encode pause and arrival semantics inside move-specific CSS keyframes.
+  Rationale: This keeps “pause face-up for N ms” and “shrink into destination” under plan timing control, which is the main user-facing benefit of the declarative animation refactor.
+  Date/Author: 2026-03-17 / Codex
+
+- Decision: Treat chip destination updates as checkpointed board-state changes inside the animation plan instead of as delayed CSS timing derived from in-flight overlays.
+  Rationale: Source decrement, chip flight, and destination increment/bulge need to stay in one declarative sequence; view-level delay maps reintroduced timing drift and caused target pulses to lag behind unrelated phases.
+  Date/Author: 2026-03-17 / Codex
+
 ## Outcomes & Retrospective
 
-The main architectural goal is in place: `RoomScene` now animates through a plan runner rather than through a monolithic effect. Validation passed across targeted lint, web tests, web typecheck, web build, and Storybook build. The main remaining gap is architectural follow-through rather than correctness: if we want even deeper consistency later, the next step would be to move more of the remaining CSS class semantics behind named animation primitives so the Storybook primitive catalog and the board overlays share even more implementation.
+The main architectural goal is in place: `RoomScene` now animates through a plan runner rather than through a monolithic effect. Two useful follow-on passes are also complete: the card-heavy move families now express their readable pauses as explicit plan phases instead of CSS percentages, and chip destinations are once again owned by plan checkpoints rather than by view-layer delay heuristics. Validation passed across targeted lint, web tests, web typecheck, and web build after the follow-on refactors. The main remaining gap is architectural follow-through rather than correctness: if we want even deeper consistency later, the next step would be to move more of the overlay rendering itself behind reusable primitive components so the Storybook primitive catalog and the live board share even more code.
 
 ## Context and Orientation
 
@@ -148,3 +164,5 @@ The new frontend-only interfaces are:
 No server or shared-engine interface changes are required for this refactor.
 
 Revision note: created this ExecPlan during implementation because `AGENTS.md` requires a living ExecPlan for significant refactors. Updated after the final validation pass to record that lint, tests, typecheck, web build, and Storybook build all succeeded.
+
+Revision note: updated on 2026-03-17 to document the follow-on card-animation refactor that replaced percentage-tuned reserve/purchase card keyframes with explicit `hold-card` and `land-card` plan phases plus simpler CSS primitives.

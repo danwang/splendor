@@ -8,6 +8,7 @@ import {
 import { describe, expect, it } from 'vitest';
 
 import { deriveAnimationPlan } from './animation-plan.js';
+import { animationTiming } from './animation-config.js';
 import { animationTargets } from './animation-targets.js';
 import { type PublicRoomState } from './types.js';
 
@@ -123,6 +124,19 @@ describe('deriveAnimationPlan', () => {
           step.targets.includes(animationTargets.marketCard(targetCard.id)),
       ),
     ).toBe(true);
+    const purchaseFlight = departureSteps.find((step) => step.primitive === 'flight-card');
+    expect(purchaseFlight && purchaseFlight.primitive === 'flight-card').toBe(true);
+    if (purchaseFlight?.primitive !== 'flight-card') {
+      throw new Error('Expected market purchase flight.');
+    }
+    expect(purchaseFlight.flights[0]?.delayMs).toBe(animationTiming.purchaseCardStaggerMs);
+    expect(
+      plan?.phases[1]?.steps.some(
+        (step) =>
+          step.primitive === 'hold-card' &&
+          step.targets.includes(animationTargets.playerTableau('p1')),
+      ),
+    ).toBe(true);
   });
 
   it('keeps blind reserve hidden during the flight', () => {
@@ -145,6 +159,17 @@ describe('deriveAnimationPlan', () => {
     expect(plan?.phases.flatMap((phase) => phase.steps).some((step) => step.primitive === 'flip-card')).toBe(
       false,
     );
+    expect(
+      plan?.phases.some(
+        (phase) =>
+          phase.id.endsWith('phase-chip-arrival') &&
+          phase.steps.some(
+            (step) =>
+              step.primitive === 'hold-card' &&
+              step.targets.includes(animationTargets.playerReserved('p1')),
+          ),
+      ),
+    ).toBe(true);
   });
 
   it('derives purchase reserved as expand, flip, then travel', () => {
@@ -187,29 +212,102 @@ describe('deriveAnimationPlan', () => {
     const plan = deriveAnimationPlan(createRoom(readyGame, 1), createRoom(nextGame, 2));
 
     expect(plan?.kind).toBe('purchase-reserved');
-    const departureSteps = plan?.phases[0]?.steps ?? [];
+    const expandSteps = plan?.phases[0]?.steps ?? [];
     expect(
-      departureSteps.some(
+      expandSteps.some(
         (step) =>
           step.primitive === 'expand-card' &&
           step.targets.includes(animationTargets.playerReserved('p1')),
       ),
     ).toBe(true);
     expect(
-      departureSteps.some(
+      expandSteps.some(
         (step) =>
           step.primitive === 'flip-card' &&
           step.targets.includes(animationTargets.playerReserved('p1')),
       ),
-    ).toBe(true);
-    const reservedFlight = plan?.phases
-      .flatMap((phase) => phase.steps)
-      .find((step) => step.primitive === 'flight-card');
+    ).toBe(false);
+    expect(plan?.phases[1]?.steps).toEqual([
+      {
+        primitive: 'flip-card',
+        targets: [animationTargets.playerReserved('p1')],
+      },
+    ]);
+    expect(plan?.phases[2]?.steps).toEqual([
+      {
+        primitive: 'hold-card',
+        targets: [animationTargets.playerReserved('p1')],
+      },
+    ]);
+    const reservedFlight = plan?.phases[3]?.steps.find((step) => step.primitive === 'flight-card');
     expect(reservedFlight && reservedFlight.primitive === 'flight-card').toBe(true);
     if (reservedFlight?.primitive !== 'flight-card') {
       throw new Error('Expected reserved purchase flight.');
     }
     expect(reservedFlight.flights[0]?.kind).toBe('purchase-reserved');
+    const chipDepartureSteps = plan?.phases[3]?.steps ?? [];
+    const chipFlight = chipDepartureSteps.find((step) => step.primitive === 'flight-chip');
+    expect(chipFlight && chipFlight.primitive === 'flight-chip').toBe(true);
+    if (chipFlight?.primitive !== 'flight-chip') {
+      throw new Error('Expected reserved purchase chip flight.');
+    }
+    expect(chipFlight.flights[0]?.delayMs).toBe(animationTiming.purchaseReservedChipDelayMs);
+    expect(
+      plan?.phases.some(
+        (phase) =>
+          phase.id.endsWith('phase-chip-arrival') &&
+          phase.steps.some(
+            (step) =>
+              step.primitive === 'hold-card' &&
+              step.targets.includes(animationTargets.playerTableau('p1')),
+          ),
+      ),
+    ).toBe(true);
+  });
+
+  it('derives visible reserve as flight, hold, flip, then land', () => {
+    const previousGame = createGame();
+    const targetCard = previousGame.market.tier1[0]!;
+    const nextGame = reduceOk(previousGame, {
+      type: 'reserve-visible',
+      cardId: targetCard.id,
+    });
+    const plan = deriveAnimationPlan(createRoom(previousGame, 1), createRoom(nextGame, 2));
+
+    expect(plan?.kind).toBe('reserve-visible');
+    expect(plan?.phases.map((phase) => phase.checkpointId)).toEqual([
+      'departure',
+      'arrival',
+      'arrival',
+      'arrival',
+      'arrival',
+      'final',
+    ]);
+    expect(
+      plan?.phases[1]?.steps.some(
+        (step) =>
+          step.primitive === 'hold-card' &&
+          step.targets.includes(animationTargets.playerReserved('p1')),
+      ),
+    ).toBe(true);
+    expect(
+      plan?.phases[1]?.steps.some(
+        (step) => step.primitive === 'bulge' && step.targets.includes(animationTargets.playerChip('p1', 'gold')),
+      ),
+    ).toBe(true);
+    expect(plan?.phases[2]?.steps).toEqual([
+      {
+        primitive: 'flip-card',
+        targets: [animationTargets.playerReserved('p1')],
+      },
+    ]);
+    expect(
+      plan?.phases[3]?.steps.some(
+        (step) =>
+          step.primitive === 'land-card' &&
+          step.targets.includes(animationTargets.playerReserved('p1')),
+      ),
+    ).toBe(true);
   });
 
   it('derives noble claim from viewport origin and delays final handoff', () => {

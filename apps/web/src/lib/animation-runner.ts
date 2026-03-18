@@ -18,6 +18,7 @@ export interface AnimationPhaseRuntime {
   readonly activeTargets: AnimationTargetState;
   readonly cardFlights: readonly ResolvedCardFlight[];
   readonly chipFlights: readonly ResolvedChipFlight[];
+  readonly shortChipFlights: readonly ResolvedChipFlight[];
   readonly phase: AnimationPhase | null;
 }
 
@@ -29,6 +30,7 @@ export interface AnimationRunnerFrame {
   readonly isAnimating: boolean;
   readonly phaseIndex: number;
   readonly presentedRoom: PublicRoomState | null;
+  readonly shortChipFlights: readonly ResolvedChipFlight[];
 }
 
 export type AnimationTargetResolver = (targetId: AnimationTargetId) => ResolvedRect | null;
@@ -40,13 +42,15 @@ const emptyTargetState = (): AnimationTargetState => ({
   fadePlaceholder: new Set(),
   flipCard: new Set(),
   flipNumber: new Set(),
+  holdCard: new Set(),
   highlightRow: new Set(),
+  landCard: new Set(),
 });
 
 const toTopLeft = (
   targetId: AnimationTargetId,
   rect: ResolvedRect,
-  index: number,
+  _index: number,
 ): { readonly x: number; readonly y: number } => {
   if (targetId.startsWith('bank:')) {
     return {
@@ -57,7 +61,7 @@ const toTopLeft = (
 
   if (targetId.includes(':chips:')) {
     return {
-      x: rect.left + Math.min(28 + index * 16, rect.width - 18),
+      x: rect.left + rect.width / 2 - 14,
       y: rect.top + rect.height / 2 - 14,
     };
   }
@@ -84,7 +88,9 @@ const collectTargetIds = (
     fadePlaceholder: new Set(state.fadePlaceholder),
     flipCard: new Set(state.flipCard),
     flipNumber: new Set(state.flipNumber),
+    holdCard: new Set(state.holdCard),
     highlightRow: new Set(state.highlightRow),
+    landCard: new Set(state.landCard),
   };
 
   for (const target of targets) {
@@ -107,8 +113,14 @@ const collectTargetIds = (
       case 'flip-number':
         nextState.flipNumber.add(target);
         break;
+      case 'hold-card':
+        nextState.holdCard.add(target);
+        break;
       case 'highlight-row':
         nextState.highlightRow.add(target);
+        break;
+      case 'land-card':
+        nextState.landCard.add(target);
         break;
     }
   }
@@ -130,6 +142,8 @@ const resolveCardFlights = (
 
   return [
       {
+        ...(flight.delayMs ? { delayMs: flight.delayMs } : {}),
+        ...(flight.durationMs ? { durationMs: flight.durationMs } : {}),
         fromX: sourceRect.left,
         fromY: sourceRect.top,
         id: flight.id,
@@ -146,6 +160,7 @@ const resolveCardFlights = (
 const resolveChipFlights = (
   flights: readonly import('./animation-types.js').AnimationChipFlight[],
   resolveTargetRect: AnimationTargetResolver,
+  speed: ResolvedChipFlight['speed'],
 ): readonly ResolvedChipFlight[] => {
   const sourceCount = new Map<string, number>();
   const targetCount = new Map<string, number>();
@@ -169,9 +184,14 @@ const resolveChipFlights = (
     return [
       {
         color: flight.color,
+        ...(flight.delayMs ? { delayMs: flight.delayMs } : {}),
+        ...(flight.durationMs ? { durationMs: flight.durationMs } : {}),
+        from: flight.from,
         fromX: fromPoint.x,
         fromY: fromPoint.y,
         id: flight.id,
+        speed,
+        to: flight.to,
         toX: toPoint.x,
         toY: toPoint.y,
       },
@@ -188,6 +208,7 @@ const createPhaseRuntime = (
       activeTargets: emptyTargetState(),
       cardFlights: [],
       chipFlights: [],
+      shortChipFlights: [],
       phase: null,
     };
   }
@@ -203,7 +224,12 @@ const createPhaseRuntime = (
         case 'flight-chip':
           return {
             ...runtime,
-            chipFlights: resolveChipFlights(step.flights, resolveTargetRect),
+            chipFlights: resolveChipFlights(step.flights, resolveTargetRect, 'normal'),
+          };
+        case 'flight-chip-short':
+          return {
+            ...runtime,
+            shortChipFlights: resolveChipFlights(step.flights, resolveTargetRect, 'short'),
           };
         case 'wait':
           return runtime;
@@ -218,6 +244,7 @@ const createPhaseRuntime = (
       activeTargets: emptyTargetState(),
       cardFlights: [],
       chipFlights: [],
+      shortChipFlights: [],
       phase,
     },
   );
@@ -233,6 +260,7 @@ export const createAnimationRunnerFrame = (
   isAnimating: false,
   phaseIndex: -1,
   presentedRoom: room,
+  shortChipFlights: [],
 });
 
 export const startAnimationPlan = (
@@ -251,6 +279,7 @@ export const startAnimationPlan = (
     isAnimating: true,
     phaseIndex: firstPhase ? 0 : -1,
     presentedRoom: firstPhase?.presentedRoom ?? room,
+    shortChipFlights: runtime.shortChipFlights,
   };
 };
 
@@ -275,6 +304,7 @@ export const advanceAnimationRunner = (
       isAnimating: false,
       phaseIndex: -1,
       presentedRoom: currentPlan.finalRoom,
+      shortChipFlights: [],
     };
   }
 
@@ -288,6 +318,7 @@ export const advanceAnimationRunner = (
     isAnimating: true,
     phaseIndex: frame.phaseIndex + 1,
     presentedRoom: nextPhase.presentedRoom,
+    shortChipFlights: runtime.shortChipFlights,
   };
 };
 

@@ -134,24 +134,10 @@ const ArriveCardPreview = () => {
           <SplendorCard card={DEVELOPMENT_CARDS[24]!} size="compact" />
         </div>
         <div className="absolute right-0 top-10 w-[3.6rem]">
-          <div className={active ? 'board-piece-pop' : ''}>
+          <div className={active ? 'card-land' : 'card-hold'}>
             <SplendorCard card={DEVELOPMENT_CARDS[24]!} size="compact" />
           </div>
         </div>
-        {active ? (
-          <div
-            aria-hidden="true"
-            className="card-flight absolute left-0 top-0 w-[4.6rem]"
-            style={
-              {
-                '--card-dx': '194px',
-                '--card-dy': '42px',
-              } as CSSProperties
-            }
-          >
-            <SplendorCard card={DEVELOPMENT_CARDS[24]!} size="compact" />
-          </div>
-        ) : null}
       </div>
     </PrimitiveStage>
   );
@@ -198,8 +184,8 @@ const FlipCardPreview = () => {
   return (
     <PrimitiveStage title="Flip card">
       <div className="flex items-center justify-center">
-        <div className={`w-[4.6rem] ${active ? 'card-flight-flip' : ''}`}>
-          <div className={`relative aspect-[5/7] w-full ${active ? 'card-flight-flip-inner' : ''}`}>
+        <div className="w-[4.6rem]">
+          <div className={`relative aspect-[5/7] w-full ${active ? 'card-flip-only-inner' : ''}`}>
             <div className="card-flight-face absolute inset-0">
               <SplendorCard card={DEVELOPMENT_CARDS[44]!} size="compact" />
             </div>
