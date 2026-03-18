@@ -178,6 +178,34 @@ code {
   }
 }
 
+@keyframes card-flight-purchase-visible {
+  0% {
+    opacity: 0;
+    transform: translate3d(0, 0, 0) scale(0.94) rotate(0deg);
+  }
+
+  10% {
+    opacity: 1;
+  }
+
+  72% {
+    opacity: 1;
+    transform: translate3d(var(--card-dx), calc(var(--card-dy) - 10px), 0) scale(0.76)
+      rotate(-4deg);
+  }
+
+  80% {
+    opacity: 1;
+    transform: translate3d(var(--card-dx), calc(var(--card-dy) - 10px), 0) scale(0.76)
+      rotate(-4deg);
+  }
+
+  100% {
+    opacity: 0.04;
+    transform: translate3d(var(--card-dx), var(--card-dy), 0) scale(0.46) rotate(-6deg);
+  }
+}
+
 @keyframes card-flight-reserve-visible {
   0% {
     opacity: 0;
@@ -275,11 +303,11 @@ code {
 
 @keyframes card-flight-flip {
   0%,
-  58% {
+  74% {
     transform: rotateY(0deg);
   }
 
-  82%,
+  98%,
   100% {
     transform: rotateY(180deg);
   }
@@ -391,6 +419,11 @@ code {
   animation-fill-mode: both;
   pointer-events: none;
   will-change: transform, opacity;
+}
+
+.card-flight-purchase-visible {
+  animation: card-flight-purchase-visible var(--anim-card-arrival-ms)
+    cubic-bezier(0.16, 0.84, 0.24, 1);
 }
 
 .noble-flight {

@@ -5,6 +5,8 @@ import { type PublicRoomState } from './types.js';
 
 export interface RoomActivityEntry {
   readonly accent: 'amber' | 'emerald' | 'sky';
+  readonly afterStateVersion: number;
+  readonly beforeStateVersion: number;
   readonly id: string;
   readonly message: string;
   readonly stateVersion: number;
@@ -46,12 +48,15 @@ const playerChanged = (
 
 const pushEntry = (
   entries: RoomActivityEntry[],
+  previousRoom: PublicRoomState,
   nextRoom: PublicRoomState,
   message: string,
   accent: RoomActivityEntry['accent'],
 ): void => {
   entries.push({
     accent,
+    afterStateVersion: nextRoom.stateVersion,
+    beforeStateVersion: previousRoom.stateVersion,
     id: `${nextRoom.stateVersion}-${entries.length}-${message}`,
     message,
     stateVersion: nextRoom.stateVersion,
@@ -110,17 +115,17 @@ export const deriveRoomActivityEntries = (
   nextRoom.participants
     .filter((participant) => !previousParticipants.has(participant.userId))
     .forEach((participant) => {
-      pushEntry(entries, nextRoom, `${participant.displayName} joined the room.`, 'emerald');
+      pushEntry(entries, previousRoom, nextRoom, `${participant.displayName} joined the room.`, 'emerald');
     });
 
   previousRoom.participants
     .filter((participant) => !nextParticipants.has(participant.userId))
     .forEach((participant) => {
-      pushEntry(entries, nextRoom, `${participant.displayName} left the room.`, 'sky');
+      pushEntry(entries, previousRoom, nextRoom, `${participant.displayName} left the room.`, 'sky');
     });
 
   if (previousRoom.status === 'waiting' && nextRoom.game) {
-    pushEntry(entries, nextRoom, 'The host started the match.', 'amber');
+    pushEntry(entries, previousRoom, nextRoom, 'The host started the match.', 'amber');
   }
 
   if (!previousRoom.game || !nextRoom.game) {
@@ -152,7 +157,7 @@ export const deriveRoomActivityEntries = (
         ? `${nextPlayer.identity.displayName} reserved a market card.`
         : `${nextPlayer.identity.displayName} blind reserved tier ${card.tier}.`;
 
-      pushEntry(entries, nextRoom, message, 'sky');
+      pushEntry(entries, previousRoom, nextRoom, message, 'sky');
     });
 
     purchasedCards.forEach((card) => {
@@ -162,11 +167,11 @@ export const deriveRoomActivityEntries = (
           ? `${nextPlayer.identity.displayName} bought a market card.`
           : `${nextPlayer.identity.displayName} bought a card.`;
 
-      pushEntry(entries, nextRoom, message, 'amber');
+      pushEntry(entries, previousRoom, nextRoom, message, 'amber');
     });
 
     claimedNobles.forEach(() => {
-      pushEntry(entries, nextRoom, `${nextPlayer.identity.displayName} claimed a noble.`, 'emerald');
+      pushEntry(entries, previousRoom, nextRoom, `${nextPlayer.identity.displayName} claimed a noble.`, 'emerald');
     });
   });
 
@@ -184,6 +189,7 @@ export const deriveRoomActivityEntries = (
     if (previousGame.turn.kind === 'main-action' && tokenDelta > 0 && !boughtCard) {
       pushEntry(
         entries,
+        previousRoom,
         nextRoom,
         `${previousActor.identity.displayName} took ${tokenDelta} chip${tokenDelta === 1 ? '' : 's'}.`,
         'sky',
@@ -193,6 +199,7 @@ export const deriveRoomActivityEntries = (
     if (previousGame.turn.kind === 'discard' && tokenDelta < 0) {
       pushEntry(
         entries,
+        previousRoom,
         nextRoom,
         `${previousActor.identity.displayName} discarded ${Math.abs(tokenDelta)} chip${tokenDelta === -1 ? '' : 's'}.`,
         'amber',
@@ -204,7 +211,7 @@ export const deriveRoomActivityEntries = (
       nextActor.nobles.length === previousActor.nobles.length &&
       nextGame.turn.activePlayerIndex !== previousGame.turn.activePlayerIndex
     ) {
-      pushEntry(entries, nextRoom, `${previousActor.identity.displayName} skipped a noble.`, 'sky');
+      pushEntry(entries, previousRoom, nextRoom, `${previousActor.identity.displayName} skipped a noble.`, 'sky');
     }
   }
 
@@ -212,7 +219,7 @@ export const deriveRoomActivityEntries = (
     const winners = nextGame.result?.winners ?? [];
 
     if (winners.length > 0) {
-      pushEntry(entries, nextRoom, `${winners.join(', ')} won the game.`, 'emerald');
+      pushEntry(entries, previousRoom, nextRoom, `${winners.join(', ')} won the game.`, 'emerald');
     }
   }
 
@@ -224,3 +231,17 @@ export const latestRoomEntries = (
   nextEntries: readonly RoomActivityEntry[],
   limit = 18,
 ): readonly RoomActivityEntry[] => [...[...nextEntries].reverse(), ...previous].slice(0, limit);
+
+export const deriveRoomHistoryEntries = (
+  history: readonly PublicRoomState[],
+  limit = 18,
+): readonly RoomActivityEntry[] => {
+  const sortedHistory = [...history].sort((left, right) => left.stateVersion - right.stateVersion);
+  const entries = sortedHistory.slice(1).flatMap((nextRoom, index) => {
+    const previousRoom = sortedHistory[index] ?? null;
+
+    return deriveRoomActivityEntries(previousRoom, nextRoom);
+  });
+
+  return [...entries].reverse().slice(0, limit);
+};

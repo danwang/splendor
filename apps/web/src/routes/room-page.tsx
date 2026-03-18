@@ -11,6 +11,26 @@ import { type PublicRoomState, type ServerMessage } from '../lib/types.js';
 const reconnectDelayForAttempt = (attempt: number): number =>
   Math.min(1_000 * 2 ** attempt, 10_000);
 
+const mergeRoomHistory = (
+  history: readonly PublicRoomState[],
+  nextRoom: PublicRoomState | null,
+  limit = 180,
+): readonly PublicRoomState[] => {
+  if (!nextRoom) {
+    return history;
+  }
+
+  const sameRoomHistory = history.filter((room) => room.id === nextRoom.id);
+  const byVersion = new Map<number, PublicRoomState>(
+    sameRoomHistory.map((room) => [room.stateVersion, room]),
+  );
+  byVersion.set(nextRoom.stateVersion, nextRoom);
+
+  return [...byVersion.values()]
+    .sort((left, right) => left.stateVersion - right.stateVersion)
+    .slice(-limit);
+};
+
 export const RoomPage = () => {
   const { roomId = '' } = useParams();
   const navigate = useNavigate();
@@ -25,6 +45,7 @@ export const RoomPage = () => {
     user,
   } = useAppAuth();
   const [room, setRoom] = useState<PublicRoomState | null>(null);
+  const [roomHistory, setRoomHistory] = useState<readonly PublicRoomState[]>([]);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [guestDisplayName, setGuestDisplayName] = useState('');
   const [isWorking, setIsWorking] = useState(false);
@@ -35,6 +56,10 @@ export const RoomPage = () => {
   const currentUserId = user?.id;
   const isJoinedParticipant =
     room !== null && room.participants.some((participant) => participant.userId === currentUserId);
+  const commitRoom = (nextRoom: PublicRoomState | null): void => {
+    setRoom(nextRoom);
+    setRoomHistory((current) => mergeRoomHistory(current, nextRoom));
+  };
 
   useEffect(() => {
     if (!isAuthenticated || roomId.length === 0) {
@@ -49,7 +74,7 @@ export const RoomPage = () => {
         const nextRoom = await loadRoom(token, roomId);
 
         if (!isCancelled) {
-          setRoom(nextRoom);
+          commitRoom(nextRoom);
           setErrorMessage(null);
         }
       } catch (error) {
@@ -152,6 +177,7 @@ export const RoomPage = () => {
             });
             if (message.type === 'room-state') {
               setRoom(message.room);
+              setRoomHistory((current) => mergeRoomHistory(current, message.room));
               setErrorMessage(null);
               return;
             }
@@ -239,7 +265,7 @@ export const RoomPage = () => {
       const token = await getAccessTokenSilently();
       const nextRoom = await joinRoom(token, roomId);
 
-      setRoom(nextRoom);
+      commitRoom(nextRoom);
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : 'Failed to join room.');
     } finally {
@@ -254,7 +280,7 @@ export const RoomPage = () => {
       const token = await getAccessTokenSilently();
       const nextRoom = await startRoom(token, roomId);
 
-      setRoom(nextRoom);
+      commitRoom(nextRoom);
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : 'Failed to start room.');
     } finally {
@@ -269,7 +295,7 @@ export const RoomPage = () => {
       const token = await getAccessTokenSilently();
       const nextRoom = await bootRoomParticipant(token, roomId, userId);
 
-      setRoom(nextRoom);
+      commitRoom(nextRoom);
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : 'Failed to remove player.');
     } finally {
@@ -351,6 +377,7 @@ export const RoomPage = () => {
       }}
       onSubmitMove={submitMove}
       room={room}
+      roomHistory={roomHistory}
       roomId={roomId}
       user={user}
     />

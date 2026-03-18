@@ -217,6 +217,7 @@ export const baseArgs: RoomSceneProps = {
   onStartGame: () => undefined,
   onSubmitMove: () => undefined,
   room: createRoom(baseGame),
+  roomHistory: [createRoom(baseGame)],
   roomId: 'storybook-room',
   user: {
     id: 'dev-alice',

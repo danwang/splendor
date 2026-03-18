@@ -40,8 +40,7 @@ import {
   type PlayerSummaryModel,
 } from '../lib/game-ui.js';
 import {
-  deriveRoomActivityEntries,
-  latestRoomEntries,
+  deriveRoomHistoryEntries,
   type RoomActivityEntry,
 } from '../lib/room-activity.js';
 import { type PublicRoomState, type RoomParticipant } from '../lib/types.js';
@@ -67,6 +66,13 @@ interface PlayerReceiveAnimation {
 interface SourceChipBulges {
   readonly bankColors: readonly GemColor[];
   readonly playerColorsById: Readonly<Record<string, readonly GemColor[]>>;
+}
+
+interface ReplaySelection {
+  readonly afterStateVersion: number;
+  readonly beforeStateVersion: number;
+  readonly entryId: string;
+  readonly nonce: number;
 }
 
 const tokenRingStyles: Readonly<Record<TokenColor, string>> = {
@@ -531,6 +537,7 @@ export interface RoomSceneProps {
   readonly initialActivePanel?: BoardPanel;
   readonly currentUserId: string | undefined;
   readonly errorMessage: string | null;
+  readonly initialReplayAfterStateVersion?: number;
   readonly initialSelection?: Selection;
   readonly initialResultsVisible?: boolean;
   readonly isSocketConnected: boolean;
@@ -541,6 +548,7 @@ export interface RoomSceneProps {
   readonly onStartGame: () => void;
   readonly onSubmitMove: (move: Move) => void;
   readonly room: PublicRoomState | null;
+  readonly roomHistory?: readonly PublicRoomState[];
   readonly roomId: string;
   readonly user: AppUser | undefined;
 }
@@ -549,6 +557,7 @@ export const RoomScene = ({
   initialActivePanel = 'board',
   currentUserId,
   errorMessage,
+  initialReplayAfterStateVersion,
   initialSelection = null,
   initialResultsVisible,
   isSocketConnected,
@@ -559,19 +568,35 @@ export const RoomScene = ({
   onStartGame,
   onSubmitMove,
   room: sourceRoom,
+  roomHistory = [],
   roomId,
 }: RoomSceneProps) => {
   const [selection, setSelection] = useState<Selection>(initialSelection);
   const [activePanel, setActivePanel] = useState<BoardPanel>(initialActivePanel);
   const [bankSelection, setBankSelection] = useState<readonly TokenColor[]>([]);
   const [discardSelection, setDiscardSelection] = useState<readonly GemColor[]>([]);
-  const [activityEntries, setActivityEntries] = useState<readonly RoomActivityEntry[]>([]);
+  const normalizedRoomHistory = useMemo(() => {
+    const byVersion = new Map<number, PublicRoomState>();
+
+    for (const entry of roomHistory) {
+      byVersion.set(entry.stateVersion, entry);
+    }
+
+    if (sourceRoom) {
+      byVersion.set(sourceRoom.stateVersion, sourceRoom);
+    }
+
+    return [...byVersion.values()].sort((left, right) => left.stateVersion - right.stateVersion);
+  }, [roomHistory, sourceRoom]);
+  const [activityEntries, setActivityEntries] = useState<readonly RoomActivityEntry[]>(() =>
+    deriveRoomHistoryEntries(normalizedRoomHistory),
+  );
   const [purchaseSelection, setPurchaseSelection] = useState<PaymentSelection>(createEmptyPaymentSelection);
   const [showGameComplete, setShowGameComplete] = useState(
     initialResultsVisible ?? sourceRoom?.game?.status === 'finished',
   );
+  const [replaySelection, setReplaySelection] = useState<ReplaySelection | null>(null);
   const targetNodeRefs = useRef<Partial<Record<string, HTMLElement | null>>>({});
-  const previousRoomRef = useRef<PublicRoomState | null>(sourceRoom);
   const resolveTargetRect = useCallback((targetId: string) => {
     if (targetId === animationTargets.viewportNobleOrigin()) {
       const origin = getFallbackNobleFlightOrigin();
@@ -617,9 +642,24 @@ export const RoomScene = ({
       width: rect.width,
     };
   }, []);
+  const roomHistoryByVersion = useMemo(
+    () => new Map(normalizedRoomHistory.map((entry) => [entry.stateVersion, entry])),
+    [normalizedRoomHistory],
+  );
+  const replayBeforeRoom = replaySelection
+    ? roomHistoryByVersion.get(replaySelection.beforeStateVersion) ?? null
+    : null;
+  const replayAfterRoom = replaySelection
+    ? roomHistoryByVersion.get(replaySelection.afterStateVersion) ?? null
+    : null;
+  const replayResetKey = replaySelection
+    ? `replay:${replaySelection.entryId}:${replaySelection.nonce}`
+    : `live:${sourceRoom?.id ?? 'none'}`;
   const animationFrame = useAnimationRunner({
-    canonicalRoom: sourceRoom,
+    canonicalRoom: replayAfterRoom ?? sourceRoom,
     derivePlan: deriveAnimationPlan,
+    initialPresentedRoom: replayBeforeRoom ?? null,
+    resetKey: replayResetKey,
     resolveTargetRect,
   });
   const room = animationFrame.presentedRoom;
@@ -641,9 +681,11 @@ export const RoomScene = ({
     room.status === 'waiting' &&
     room.participants.length >= 2;
   const canSubmitRealtimeMoves =
-    sourceRoom?.status === 'in_progress'
-      ? isSocketConnected && !isPresentingTransition
-      : true;
+    replaySelection !== null
+      ? false
+      : sourceRoom?.status === 'in_progress'
+        ? isSocketConnected && !isPresentingTransition
+        : true;
 
   useLayoutEffect(() => {
     setSelection(initialSelection);
@@ -651,6 +693,32 @@ export const RoomScene = ({
     setDiscardSelection([]);
     setPurchaseSelection(createEmptyPaymentSelection());
   }, [initialSelection, sourceRoom?.stateVersion]);
+
+  useEffect(() => {
+    setActivityEntries(deriveRoomHistoryEntries(normalizedRoomHistory));
+  }, [normalizedRoomHistory]);
+
+  useEffect(() => {
+    if (initialReplayAfterStateVersion === undefined || replaySelection !== null) {
+      return;
+    }
+
+    const initialEntry = deriveRoomHistoryEntries(normalizedRoomHistory).find(
+      (entry) => entry.afterStateVersion === initialReplayAfterStateVersion,
+    );
+
+    if (!initialEntry) {
+      return;
+    }
+
+    setReplaySelection({
+      afterStateVersion: initialEntry.afterStateVersion,
+      beforeStateVersion: initialEntry.beforeStateVersion,
+      entryId: initialEntry.id,
+      nonce: 0,
+    });
+    setActivePanel('board');
+  }, [initialReplayAfterStateVersion, normalizedRoomHistory, replaySelection]);
 
   useEffect(() => {
     setActivePanel(initialActivePanel);
@@ -673,22 +741,14 @@ export const RoomScene = ({
   }, [game?.status]);
 
   useEffect(() => {
-    const previousRoom = previousRoomRef.current;
-
-    if (!sourceRoom) {
-      previousRoomRef.current = sourceRoom;
-      return;
+    if (
+      replaySelection &&
+      (!roomHistoryByVersion.has(replaySelection.beforeStateVersion) ||
+        !roomHistoryByVersion.has(replaySelection.afterStateVersion))
+    ) {
+      setReplaySelection(null);
     }
-
-    if (previousRoom && previousRoom.stateVersion !== sourceRoom.stateVersion) {
-      const nextEntries = deriveRoomActivityEntries(previousRoom, sourceRoom);
-      if (nextEntries.length > 0) {
-        setActivityEntries((current) => latestRoomEntries(current, nextEntries));
-      }
-    }
-
-    previousRoomRef.current = sourceRoom;
-  }, [sourceRoom]);
+  }, [replaySelection, roomHistoryByVersion]);
 
   useEffect(() => {
     setPurchaseSelection(createEmptyPaymentSelection());
@@ -796,7 +856,9 @@ export const RoomScene = ({
         })
       : [];
   const forcedSheet =
-    interaction?.isCurrentUsersTurn && game?.turn.kind === 'discard'
+    replaySelection !== null
+      ? null
+      : interaction?.isCurrentUsersTurn && game?.turn.kind === 'discard'
       ? 'discard'
       : interaction?.isCurrentUsersTurn && game?.turn.kind === 'noble'
         ? 'noble'
@@ -806,6 +868,33 @@ export const RoomScene = ({
     game && interaction
       ? turnBannerCopy(game, interaction.isCurrentUsersTurn, interaction.activePlayerName)
       : 'Waiting for room state';
+  const replayableEntries = useMemo(
+    () =>
+      activityEntries
+        .filter(
+          (entry) =>
+            roomHistoryByVersion.has(entry.beforeStateVersion) &&
+            roomHistoryByVersion.has(entry.afterStateVersion),
+        )
+        .sort((left, right) => left.afterStateVersion - right.afterStateVersion),
+    [activityEntries, roomHistoryByVersion],
+  );
+  const replayEntry = replaySelection
+    ? replayableEntries.find((entry) => entry.id === replaySelection.entryId) ?? null
+    : null;
+  const replayIndex = replayEntry
+    ? replayableEntries.findIndex((entry) => entry.id === replayEntry.id)
+    : -1;
+  const previousReplayEntry =
+    replayIndex > 0 ? replayableEntries[replayIndex - 1] ?? null : null;
+  const nextReplayEntry =
+    replayIndex >= 0 && replayIndex < replayableEntries.length - 1
+      ? replayableEntries[replayIndex + 1] ?? null
+      : null;
+  const liveAdvancedWhileReplaying =
+    replaySelection !== null &&
+    sourceRoom !== null &&
+    sourceRoom.stateVersion > replaySelection.afterStateVersion;
   const reservedPurchaseFlightStep = useMemo(() => {
     if (animationFrame.currentPlan?.kind !== 'purchase-reserved') {
       return null;
@@ -873,6 +962,48 @@ export const RoomScene = ({
     setBankSelection([]);
     setDiscardSelection([]);
     setPurchaseSelection(createEmptyPaymentSelection());
+  };
+
+  const startReplay = (entry: RoomActivityEntry) => {
+    if (
+      !roomHistoryByVersion.has(entry.beforeStateVersion) ||
+      !roomHistoryByVersion.has(entry.afterStateVersion)
+    ) {
+      return;
+    }
+
+    setSelection(null);
+    setBankSelection([]);
+    setDiscardSelection([]);
+    setPurchaseSelection(createEmptyPaymentSelection());
+    setShowGameComplete(false);
+    setActivePanel('board');
+    setReplaySelection({
+      afterStateVersion: entry.afterStateVersion,
+      beforeStateVersion: entry.beforeStateVersion,
+      entryId: entry.id,
+      nonce: 0,
+    });
+  };
+
+  const replayCurrentEntry = () => {
+    if (!replaySelection) {
+      return;
+    }
+
+    setShowGameComplete(false);
+    setReplaySelection((current) =>
+      current
+        ? {
+            ...current,
+            nonce: current.nonce + 1,
+          }
+        : current,
+    );
+  };
+
+  const stopReplay = () => {
+    setReplaySelection(null);
   };
 
   const renderBoardPanel = () => {
@@ -1014,18 +1145,29 @@ export const RoomScene = ({
       <div className="mt-2 space-y-1.5">
         {activityEntries.length > 0 ? (
           activityEntries.map((entry) => (
-            <div
+            <button
               key={entry.id}
-              className={`log-entry rounded-[0.9rem] border px-3 py-2 text-sm ${
+              className={`log-entry flex w-full items-center justify-between gap-3 rounded-[0.9rem] border px-3 py-2 text-left text-sm ${
                 entry.accent === 'amber'
                   ? 'border-amber-300/18 bg-amber-300/7 text-amber-50'
                   : entry.accent === 'emerald'
                     ? 'border-emerald-300/18 bg-emerald-300/7 text-emerald-50'
                     : 'border-sky-300/18 bg-sky-300/7 text-sky-50'
-              } ${entry.stateVersion === room?.stateVersion ? 'log-entry-new' : ''}`}
+              } ${entry.stateVersion === room?.stateVersion ? 'log-entry-new' : ''} ${
+                replaySelection?.entryId === entry.id ? 'ring-2 ring-amber-300/35' : ''
+              }`}
+              disabled={
+                !roomHistoryByVersion.has(entry.beforeStateVersion) ||
+                !roomHistoryByVersion.has(entry.afterStateVersion)
+              }
+              onClick={() => startReplay(entry)}
+              type="button"
             >
-              {entry.message}
-            </div>
+              <span className="min-w-0 flex-1">{entry.message}</span>
+              <span className="shrink-0 rounded-full border border-white/10 bg-black/15 px-2 py-1 text-[10px] uppercase tracking-[0.18em] text-stone-200/90 disabled:opacity-40">
+                Replay
+              </span>
+            </button>
           ))
         ) : (
           <p className="rounded-[0.9rem] border border-white/8 bg-white/4 px-3 py-3 text-sm text-stone-400">
@@ -1719,6 +1861,65 @@ export const RoomScene = ({
           </div>
         ) : null}
 
+        {replaySelection && replayEntry ? (
+          <section className="rounded-[1rem] border border-sky-300/20 bg-sky-300/10 px-3 py-3 shadow-[0_14px_36px_rgba(0,0,0,0.24)]">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-[10px] uppercase tracking-[0.18em] text-sky-200/80">
+                  Replay mode
+                </p>
+                <p className="mt-1 text-sm font-medium text-sky-50">{replayEntry.message}</p>
+                <p className="mt-1 text-xs text-sky-100/75">
+                  Move {replayIndex + 1} of {replayableEntries.length}
+                  {liveAdvancedWhileReplaying && sourceRoom
+                    ? ` • Live game is now at v${sourceRoom.stateVersion}`
+                    : ''}
+                </p>
+              </div>
+              <button
+                className="rounded-full border border-sky-200/20 bg-sky-950/30 px-3 py-1.5 text-xs font-medium text-sky-50 transition hover:bg-sky-950/45"
+                onClick={stopReplay}
+                type="button"
+              >
+                Live
+              </button>
+            </div>
+            <div className="mt-3 grid grid-cols-3 gap-2">
+              <button
+                className={subtleButtonClass}
+                disabled={!previousReplayEntry}
+                onClick={() => {
+                  if (previousReplayEntry) {
+                    startReplay(previousReplayEntry);
+                  }
+                }}
+                type="button"
+              >
+                Previous
+              </button>
+              <button
+                className={primaryButtonClass}
+                onClick={replayCurrentEntry}
+                type="button"
+              >
+                Replay
+              </button>
+              <button
+                className={subtleButtonClass}
+                disabled={!nextReplayEntry}
+                onClick={() => {
+                  if (nextReplayEntry) {
+                    startReplay(nextReplayEntry);
+                  }
+                }}
+                type="button"
+              >
+                Next
+              </button>
+            </div>
+          </section>
+        ) : null}
+
         {room ? (
           <>
             {game ? (
@@ -1883,6 +2084,10 @@ export const RoomScene = ({
           aria-hidden="true"
           className={`fixed z-50 pointer-events-none ${
             flight.kind === 'noble' ? 'noble-flight w-[4.25rem]' : 'card-flight w-[4.6rem]'
+          } ${
+            flight.kind === 'purchase-visible'
+              ? 'card-flight-purchase-visible'
+              : ''
           } ${
             flight.kind === 'reserve-visible'
               ? 'card-flight-flip'

@@ -294,15 +294,23 @@ export const advanceAnimationRunner = (
 export const useAnimationRunner = ({
   canonicalRoom,
   derivePlan,
+  initialPresentedRoom,
+  resetKey,
   resolveTargetRect,
 }: {
   readonly canonicalRoom: PublicRoomState | null;
   readonly derivePlan: (previousRoom: PublicRoomState | null, nextRoom: PublicRoomState | null) => AnimationPlan | null;
+  readonly initialPresentedRoom?: PublicRoomState | null;
+  readonly resetKey?: string;
   readonly resolveTargetRect: AnimationTargetResolver;
 }): AnimationRunnerFrame => {
   const [frame, setFrame] = useState<AnimationRunnerFrame>(() =>
-    createAnimationRunnerFrame(canonicalRoom),
+    createAnimationRunnerFrame(initialPresentedRoom ?? canonicalRoom),
   );
+
+  useEffect(() => {
+    setFrame(createAnimationRunnerFrame(initialPresentedRoom ?? canonicalRoom));
+  }, [initialPresentedRoom, resetKey]);
 
   useEffect(() => {
     if (frame.currentPlan) {

@@ -1,7 +1,27 @@
+import { reduceGame } from '@splendor/game-engine';
 import type { Meta, StoryObj } from '@storybook/react-vite';
 
 import { RoomScene } from './room-scene.js';
 import { baseArgs, createRoom, withDiscardPhase, withNobleChoice, withReservedPressure } from './room-scene.story-helpers.js';
+
+const replayStartRoom = createRoom(withReservedPressure(), {
+  stateVersion: 30,
+  status: 'in_progress',
+});
+
+const replayResult = reduceGame(replayStartRoom.game!, {
+  type: 'take-distinct',
+  colors: ['white', 'blue', 'green'],
+});
+
+if (!replayResult.ok) {
+  throw new Error(replayResult.error.message);
+}
+
+const replayEndRoom = createRoom(replayResult.state, {
+  stateVersion: 31,
+  status: 'in_progress',
+});
 
 const meta = {
   title: 'Game/RoomScene/Board',
@@ -66,5 +86,13 @@ export const NobleChoice: Story = {
       stateVersion: 13,
       status: 'in_progress',
     }),
+  },
+};
+
+export const ReplayMode: Story = {
+  args: {
+    initialReplayAfterStateVersion: 31,
+    room: replayEndRoom,
+    roomHistory: [replayStartRoom, replayEndRoom],
   },
 };

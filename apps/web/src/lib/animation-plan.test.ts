@@ -202,7 +202,9 @@ describe('deriveAnimationPlan', () => {
           step.targets.includes(animationTargets.playerReserved('p1')),
       ),
     ).toBe(true);
-    const reservedFlight = departureSteps.find((step) => step.primitive === 'flight-card');
+    const reservedFlight = plan?.phases
+      .flatMap((phase) => phase.steps)
+      .find((step) => step.primitive === 'flight-card');
     expect(reservedFlight && reservedFlight.primitive === 'flight-card').toBe(true);
     if (reservedFlight?.primitive !== 'flight-card') {
       throw new Error('Expected reserved purchase flight.');
