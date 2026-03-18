@@ -411,6 +411,43 @@ const createBlindReserveRooms = (): readonly [PublicRoomState, PublicRoomState] 
   ] as const;
 };
 
+const createDiscardRooms = (): readonly [PublicRoomState, PublicRoomState] => {
+  const baseGame = createSeededGame();
+  const fromGame = {
+    ...baseGame,
+    players: [
+      {
+        ...baseGame.players[0]!,
+        tokens: {
+          white: 3,
+          blue: 3,
+          green: 2,
+          red: 2,
+          black: 1,
+          gold: 1,
+        },
+      },
+      baseGame.players[1]!,
+      baseGame.players[2]!,
+    ],
+    turn: {
+      kind: 'discard' as const,
+      activePlayerIndex: 0,
+      round: 2,
+      requiredCount: 2,
+    },
+  };
+  const toGame = assertReduced(fromGame, {
+    type: 'discard-tokens',
+    tokens: ['white', 'blue'],
+  });
+
+  return [
+    createRoom(fromGame, { stateVersion: 112, status: 'in_progress' }),
+    createRoom(toGame, { stateVersion: 113, status: 'in_progress' }),
+  ] as const;
+};
+
 const createMarketPurchaseRooms = (): readonly [PublicRoomState, PublicRoomState] => {
   const seededGame = createSeededGame();
   const targetCard = seededGame.market.tier1[1]!;
@@ -581,7 +618,7 @@ const StaticRoomSequence = ({
 };
 
 const meta = {
-  title: 'Game/RoomScene/Animations',
+  title: 'Game/RoomScene/Animation Plans',
   component: RoomScene,
   parameters: {
     viewport: {
@@ -605,6 +642,7 @@ const ChipTakePreview = () => <RepeatingTransition rooms={createTokenTakeRooms()
 const DoubleChipTakePreview = () => <RepeatingTransition rooms={createDoubleChipTakeRooms()} />;
 const ReserveVisiblePreview = () => <RepeatingTransition rooms={createReserveVisibleRooms()} />;
 const BlindReservePreview = () => <RepeatingTransition rooms={createBlindReserveRooms()} />;
+const DiscardPreview = () => <RepeatingTransition rooms={createDiscardRooms()} />;
 const PurchaseReservedPreview = () => <RepeatingTransition rooms={createPurchaseReservedRooms()} />;
 
 const MarketPurchasePreview = () => <RepeatingTransition rooms={createMarketPurchaseRooms()} />;
@@ -635,6 +673,11 @@ export const ReserveVisible: Story = {
 export const BlindReserve: Story = {
   args: baseArgs,
   render: () => <BlindReservePreview />,
+};
+
+export const Discard: Story = {
+  args: baseArgs,
+  render: () => <DiscardPreview />,
 };
 
 export const MarketPurchase: Story = {

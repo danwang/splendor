@@ -9,7 +9,7 @@
     "dev": "vite",
     "preview": "vite preview",
     "storybook": "storybook dev --host 127.0.0.1 --port 6006 --ci",
-    "test": "node -e \"process.exit(0)\"",
+    "test": "vitest run -c vitest.config.ts",
     "typecheck": "tsc -p ./tsconfig.json --pretty false --noEmit"
   },
   "devDependencies": {

@@ -234,6 +234,23 @@ code {
   }
 }
 
+@keyframes card-expand-only {
+  0% {
+    opacity: 0.14;
+    transform: translate3d(0, 0, 0) scale(0.52) rotate(0deg);
+  }
+
+  26% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(0.98) rotate(0deg);
+  }
+
+  100% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(0.98) rotate(0deg);
+  }
+}
+
 @keyframes noble-flight {
   0% {
     opacity: 0;
@@ -281,12 +298,26 @@ code {
 }
 
 .card-flight-purchase-reserved {
-  animation: card-flight-purchase-reserved 1.2s cubic-bezier(0.16, 0.84, 0.24, 1);
+  animation: card-flight-purchase-reserved var(--anim-card-expand-ms)
+    cubic-bezier(0.16, 0.84, 0.24, 1);
   perspective: 1000px;
 }
 
 .card-flight-purchase-reserved-inner {
-  animation: card-flight-flip-reveal 1.2s cubic-bezier(0.2, 0.82, 0.22, 1);
+  animation: card-flight-flip-reveal var(--anim-flip-ms) cubic-bezier(0.2, 0.82, 0.22, 1);
+  height: 100%;
+  position: relative;
+  transform-style: preserve-3d;
+  width: 100%;
+}
+
+.card-expand-only {
+  animation: card-expand-only var(--anim-card-expand-ms) cubic-bezier(0.16, 0.84, 0.24, 1);
+  perspective: 1000px;
+}
+
+.card-expand-only-inner {
+  animation: card-flight-flip-reveal var(--anim-flip-ms) cubic-bezier(0.2, 0.82, 0.22, 1);
   height: 100%;
   position: relative;
   transform-style: preserve-3d;
@@ -333,15 +364,15 @@ code {
 }
 
 .player-row-receive {
-  animation: player-row-receive 1.5s ease-out;
+  animation: player-row-receive var(--anim-settle-ms) ease-out;
 }
 
 .board-piece-pop {
-  animation: board-piece-pop 900ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  animation: board-piece-pop var(--anim-settle-ms) cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
 .board-piece-bounce {
-  animation: board-piece-bounce 800ms ease-out;
+  animation: board-piece-bounce var(--anim-bulge-ms) ease-out;
 }
 
 .log-entry-new {
@@ -349,33 +380,34 @@ code {
 }
 
 .chip-flight {
-  animation: chip-flight 1.2s cubic-bezier(0.16, 0.84, 0.24, 1);
+  animation: chip-flight var(--anim-flight-ms) cubic-bezier(0.16, 0.84, 0.24, 1);
   animation-fill-mode: both;
   pointer-events: none;
   will-change: transform, opacity;
 }
 
 .card-flight {
-  animation: card-flight 1.2s cubic-bezier(0.16, 0.84, 0.24, 1);
+  animation: card-flight var(--anim-card-arrival-ms) cubic-bezier(0.16, 0.84, 0.24, 1);
   animation-fill-mode: both;
   pointer-events: none;
   will-change: transform, opacity;
 }
 
 .noble-flight {
-  animation: noble-flight 1.2s cubic-bezier(0.16, 0.84, 0.24, 1);
+  animation: noble-flight var(--anim-card-arrival-ms) cubic-bezier(0.16, 0.84, 0.24, 1);
   animation-fill-mode: both;
   pointer-events: none;
   will-change: transform, opacity;
 }
 
 .card-flight-flip {
-  animation: card-flight-reserve-visible 1.2s cubic-bezier(0.16, 0.84, 0.24, 1);
+  animation: card-flight-reserve-visible var(--anim-card-arrival-ms)
+    cubic-bezier(0.16, 0.84, 0.24, 1);
   perspective: 1000px;
 }
 
 .card-flight-flip-inner {
-  animation: card-flight-flip 1.2s cubic-bezier(0.2, 0.82, 0.22, 1);
+  animation: card-flight-flip var(--anim-flip-ms) cubic-bezier(0.2, 0.82, 0.22, 1);
   height: 100%;
   position: relative;
   transform-style: preserve-3d;
@@ -387,16 +419,16 @@ code {
 }
 
 .receive-bulge {
-  animation: receive-bulge 760ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  animation: receive-bulge var(--anim-bulge-ms) cubic-bezier(0.2, 0.8, 0.2, 1);
   transform-origin: center;
 }
 
 .receive-bulge-delay {
   animation-delay: 60ms;
-  animation-duration: 320ms;
+  animation-duration: var(--anim-bulge-ms);
 }
 
 .score-flip {
-  animation: score-flip 780ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  animation: score-flip var(--anim-score-flip-ms) cubic-bezier(0.2, 0.8, 0.2, 1);
   transform-origin: center top;
 }

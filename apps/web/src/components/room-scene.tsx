@@ -2,6 +2,7 @@ import {
   getAutoPayment,
   getCardEffectiveCost,
   isValidPaymentForCard,
+  NOBLES,
   type Card,
   type CardTier,
   type GameState,
@@ -10,13 +11,26 @@ import {
   type PaymentSelection,
   type TokenColor,
 } from '@splendor/game-engine';
-import { type CSSProperties, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import {
+  type CSSProperties,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { Link } from 'react-router-dom';
 
 import { ActionSheet } from './action-sheet.js';
 import { DeckCard, GemPip, getNobleImageSrc, NobleTile, SplendorCard } from './game-card.js';
 import { GameCompleteScreen } from './game-complete-screen.js';
 import { type AppUser } from '../lib/auth.js';
+import { animationCssVars } from '../lib/animation-config.js';
+import { deriveAnimationPlan } from '../lib/animation-plan.js';
+import { useAnimationRunner } from '../lib/animation-runner.js';
+import { animationTargets } from '../lib/animation-targets.js';
+import { type AnimationStep } from '../lib/animation-types.js';
 import {
   cardTierOrder,
   deriveInteractionModel,
@@ -27,7 +41,6 @@ import {
 } from '../lib/game-ui.js';
 import {
   deriveRoomActivityEntries,
-  deriveRoomAnimationState,
   latestRoomEntries,
   type RoomActivityEntry,
 } from '../lib/room-activity.js';
@@ -43,32 +56,6 @@ type Selection =
   | null;
 
 type BoardPanel = 'board' | 'nobles' | 'log';
-
-interface ChipFlight {
-  readonly color: GemColor;
-  readonly fromX: number;
-  readonly fromY: number;
-  readonly id: string;
-  readonly toX: number;
-  readonly toY: number;
-}
-
-interface CardFlight {
-  readonly kind:
-    | 'purchase-visible'
-    | 'purchase-reserved'
-    | 'reserve-visible'
-    | 'reserve-deck'
-    | 'noble';
-  readonly fromX: number;
-  readonly fromY: number;
-  readonly id: string;
-  readonly toX: number;
-  readonly toY: number;
-  readonly card?: Card;
-  readonly noble?: GameState['nobles'][number];
-  readonly tier?: 1 | 2 | 3;
-}
 
 interface PlayerReceiveAnimation {
   readonly changedChipColors: readonly GemColor[];
@@ -149,9 +136,6 @@ const createEmptyPaymentSelection = (): PaymentSelection => ({
   gold: 0,
 });
 
-const transitionDelayMs = 1_200;
-const transitionSettleMs = 900;
-const transitionGapMs = 200;
 const getFallbackNobleFlightOrigin = (): { readonly x: number; readonly y: number } => {
   if (typeof window === 'undefined') {
     return { x: 148, y: 640 };
@@ -160,126 +144,6 @@ const getFallbackNobleFlightOrigin = (): { readonly x: number; readonly y: numbe
   return {
     x: window.innerWidth / 2 - 40,
     y: window.innerHeight - 112,
-  };
-};
-
-const derivePlayerReceiveAnimations = (
-  previousGame: GameState,
-  nextGame: GameState,
-): Readonly<Record<string, PlayerReceiveAnimation>> =>
-  nextGame.players.reduce<Record<string, PlayerReceiveAnimation>>((result, nextPlayer, index) => {
-    const previousPlayer = previousGame.players[index];
-
-    if (!previousPlayer) {
-      return result;
-    }
-
-    const changedChipColors = gemOrder.filter(
-      (color) => nextPlayer.tokens[color] > previousPlayer.tokens[color],
-    );
-    const changedTableauColors = nextPlayer.purchasedCards
-      .filter((card) => !previousPlayer.purchasedCards.some((entry) => entry.id === card.id))
-      .map((card) => card.bonus);
-    const previousScore =
-      previousPlayer.purchasedCards.reduce((sum, card) => sum + card.points, 0) +
-      previousPlayer.nobles.reduce((sum, noble) => sum + noble.points, 0);
-    const nextScore =
-      nextPlayer.purchasedCards.reduce((sum, card) => sum + card.points, 0) +
-      nextPlayer.nobles.reduce((sum, noble) => sum + noble.points, 0);
-
-    return {
-      ...result,
-      [nextPlayer.identity.id]: {
-        changedChipColors,
-        changedTableauColors,
-        reservedChanged: nextPlayer.reservedCards.length !== previousPlayer.reservedCards.length,
-        scoreChanged: nextScore !== previousScore,
-      },
-    };
-  }, {});
-
-const createChipTransferPresentation = (
-  previousRoom: PublicRoomState,
-  nextRoom: PublicRoomState,
-): PublicRoomState => {
-  if (!previousRoom.game || !nextRoom.game) {
-    return previousRoom;
-  }
-
-  const previousGame = previousRoom.game;
-  const nextGame = nextRoom.game;
-  const previousActor = previousGame.players[previousGame.turn.activePlayerIndex];
-  const nextActor = nextGame.players.find(
-    (player) => player.identity.id === previousActor?.identity.id,
-  );
-
-  if (!previousActor || !nextActor) {
-    return previousRoom;
-  }
-
-  const actorDeltaByColor = gemOrder.reduce<Record<GemColor, number>>((result, color) => {
-    return {
-      ...result,
-      [color]: nextActor.tokens[color] - previousActor.tokens[color],
-    };
-  }, {} as Record<GemColor, number>);
-
-  const intermediatePlayers = previousGame.players.map((player) => {
-    if (player.identity.id !== previousActor.identity.id) {
-      return player;
-    }
-
-    return {
-      ...player,
-      tokens: gemOrder.reduce<Record<GemColor, number>>((result, color) => {
-        const delta = actorDeltaByColor[color];
-
-        return {
-          ...result,
-          [color]: delta < 0 ? nextActor.tokens[color] : previousActor.tokens[color],
-        };
-      }, {} as Record<GemColor, number>),
-    };
-  });
-
-  const intermediateBank = gemOrder.reduce<Record<GemColor, number>>((result, color) => {
-    const delta = actorDeltaByColor[color];
-
-    return {
-      ...result,
-      [color]: delta > 0 ? nextGame.bank[color] : previousGame.bank[color],
-    };
-  }, {} as Record<GemColor, number>);
-
-  return {
-    ...previousRoom,
-    game: {
-      ...previousGame,
-      bank: intermediateBank,
-      players: intermediatePlayers,
-    },
-  };
-};
-
-const createPostFlightPresentation = (
-  previousRoom: PublicRoomState,
-  nextRoom: PublicRoomState,
-): PublicRoomState => {
-  if (
-    !previousRoom.game ||
-    !nextRoom.game ||
-    previousRoom.status !== 'in_progress' ||
-    nextRoom.status !== 'in_progress'
-  ) {
-    return nextRoom;
-  }
-
-  return {
-    ...nextRoom,
-    game: {
-      ...nextRoom.game,
-      turn: previousRoom.game.turn,
-    },
   };
 };
 
@@ -370,10 +234,57 @@ const emptyPlayerReceiveAnimation: PlayerReceiveAnimation = {
   scoreChanged: false,
 };
 
-const emptySourceChipBulges: SourceChipBulges = {
-  bankColors: [],
-  playerColorsById: {},
-};
+const deriveActiveAnimationState = (
+  activeTargets: ReturnType<typeof useAnimationRunner>['activeTargets'],
+): {
+  readonly changedBankColors: readonly GemColor[];
+  readonly changedDeckTiers: readonly CardTier[];
+  readonly changedMarketCardIds: readonly string[];
+  readonly changedPlayerIds: readonly string[];
+} => ({
+  changedBankColors: [],
+  changedDeckTiers: cardTierOrder.filter((tier) => activeTargets.bulge.has(animationTargets.deck(tier))),
+  changedMarketCardIds: Array.from(activeTargets.arriveCard)
+    .filter((targetId) => targetId.startsWith('market:'))
+    .map((targetId) => targetId.replace('market:', '')),
+  changedPlayerIds: Array.from(activeTargets.highlightRow)
+    .filter((targetId) => targetId.startsWith('player:') && targetId.endsWith(':row'))
+    .map((targetId) => targetId.split(':')[1]!)
+    .filter((playerId, index, playerIds) => playerIds.indexOf(playerId) === index),
+});
+
+const deriveTargetPlayerAnimations = (
+  activeTargets: ReturnType<typeof useAnimationRunner>['activeTargets'],
+  players: readonly PlayerSummaryModel[],
+): Readonly<Record<string, PlayerReceiveAnimation>> =>
+  players.reduce<Record<string, PlayerReceiveAnimation>>((result, player) => {
+    return {
+      ...result,
+      [player.id]: {
+        changedChipColors: [],
+        changedTableauColors: tokenColorOrder.filter((color) =>
+          activeTargets.bulge.has(animationTargets.playerTableauBonus(player.id, color)),
+        ),
+        reservedChanged: activeTargets.bulge.has(animationTargets.playerReserved(player.id)),
+        scoreChanged: activeTargets.flipNumber.has(animationTargets.playerScore(player.id)),
+      },
+    };
+  }, {});
+
+const deriveSourceChipBulgeState = (
+  activeTargets: ReturnType<typeof useAnimationRunner>['activeTargets'],
+  players: readonly PlayerSummaryModel[],
+): SourceChipBulges => ({
+  bankColors: gemOrder.filter((color) => activeTargets.bulge.has(animationTargets.bankChip(color))),
+  playerColorsById: players.reduce<Record<string, readonly GemColor[]>>((result, player) => {
+    return {
+      ...result,
+      [player.id]: gemOrder.filter((color) =>
+        activeTargets.bulge.has(animationTargets.playerChip(player.id, color)),
+      ),
+    };
+  }, {}),
+});
 
 const ChipStrip = ({
   counts,
@@ -650,43 +561,78 @@ export const RoomScene = ({
   room: sourceRoom,
   roomId,
 }: RoomSceneProps) => {
-  const [displayedRoom, setDisplayedRoom] = useState(sourceRoom);
-  const room = displayedRoom;
-  const game = room?.game ?? null;
   const [selection, setSelection] = useState<Selection>(initialSelection);
   const [activePanel, setActivePanel] = useState<BoardPanel>(initialActivePanel);
   const [bankSelection, setBankSelection] = useState<readonly TokenColor[]>([]);
-  const [chipFlights, setChipFlights] = useState<readonly ChipFlight[]>([]);
-  const [cardFlights, setCardFlights] = useState<readonly CardFlight[]>([]);
   const [discardSelection, setDiscardSelection] = useState<readonly GemColor[]>([]);
   const [activityEntries, setActivityEntries] = useState<readonly RoomActivityEntry[]>([]);
-  const [animationState, setAnimationState] = useState(() =>
-    deriveRoomAnimationState(null, sourceRoom),
-  );
-  const [isPresentingTransition, setIsPresentingTransition] = useState(false);
-  const [sourceChipBulges, setSourceChipBulges] = useState<SourceChipBulges>(emptySourceChipBulges);
-  const [playerAnimations, setPlayerAnimations] = useState<
-    Readonly<Record<string, PlayerReceiveAnimation>>
-  >({});
   const [purchaseSelection, setPurchaseSelection] = useState<PaymentSelection>(createEmptyPaymentSelection);
   const [showGameComplete, setShowGameComplete] = useState(
-    initialResultsVisible ?? game?.status === 'finished',
+    initialResultsVisible ?? sourceRoom?.game?.status === 'finished',
   );
-  const wasFinishedRef = useRef(game?.status === 'finished');
+  const targetNodeRefs = useRef<Partial<Record<string, HTMLElement | null>>>({});
   const previousRoomRef = useRef<PublicRoomState | null>(sourceRoom);
-  const displayCommitTimerRef = useRef<number | null>(null);
-  const animationTimerRef = useRef<number | null>(null);
-  const chipFlightTimerRef = useRef<number | null>(null);
-  const cardFlightTimerRef = useRef<number | null>(null);
-  const bankChipRefs = useRef<Partial<Record<GemColor, HTMLSpanElement | null>>>({});
-  const playerChipTargetRefs = useRef<Partial<Record<string, HTMLDivElement | null>>>({});
-  const marketCardRefs = useRef<Partial<Record<string, HTMLDivElement | null>>>({});
-  const deckRefs = useRef<Partial<Record<CardTier, HTMLDivElement | null>>>({});
-  const playerTableauTargetRefs = useRef<Partial<Record<string, HTMLDivElement | null>>>({});
-  const playerReservedTargetRefs = useRef<Partial<Record<string, HTMLDivElement | null>>>({});
-  const playerNobleTargetRefs = useRef<Partial<Record<string, HTMLDivElement | null>>>({});
+  const resolveTargetRect = useCallback((targetId: string) => {
+    if (targetId === animationTargets.viewportNobleOrigin()) {
+      const origin = getFallbackNobleFlightOrigin();
+
+      return {
+        height: 68,
+        left: origin.x,
+        top: origin.y,
+        width: 68,
+      };
+    }
+
+    if (targetId.startsWith('player:') && targetId.includes(':chips:')) {
+      const [, playerId] = targetId.split(':');
+      const node = targetNodeRefs.current[animationTargets.playerChip(playerId!, 'white')];
+
+      if (!node) {
+        return null;
+      }
+
+      const rect = node.getBoundingClientRect();
+
+      return {
+        height: rect.height,
+        left: rect.left,
+        top: rect.top,
+        width: rect.width,
+      };
+    }
+
+    const node = targetNodeRefs.current[targetId];
+
+    if (!node) {
+      return null;
+    }
+
+    const rect = node.getBoundingClientRect();
+
+    return {
+      height: rect.height,
+      left: rect.left,
+      top: rect.top,
+      width: rect.width,
+    };
+  }, []);
+  const animationFrame = useAnimationRunner({
+    canonicalRoom: sourceRoom,
+    derivePlan: deriveAnimationPlan,
+    resolveTargetRect,
+  });
+  const room = animationFrame.presentedRoom;
+  const game = room?.game ?? null;
   const interaction = game ? deriveInteractionModel(game, currentUserId) : null;
   const playerSummaries = game ? derivePlayerSummaries(game) : [];
+  const animationState = deriveActiveAnimationState(animationFrame.activeTargets);
+  const playerAnimations = deriveTargetPlayerAnimations(animationFrame.activeTargets, playerSummaries);
+  const sourceChipBulges = deriveSourceChipBulgeState(animationFrame.activeTargets, playerSummaries);
+  const chipFlights = animationFrame.chipFlights;
+  const cardFlights = animationFrame.cardFlights;
+  const isPresentingTransition = animationFrame.isAnimating;
+  const wasFinishedRef = useRef(game?.status === 'finished');
   const joined = room ? currentUserIsParticipant(room.participants, currentUserId) : false;
   const canJoin = room !== null && !joined && room.status === 'waiting';
   const canStart =
@@ -698,40 +644,13 @@ export const RoomScene = ({
     sourceRoom?.status === 'in_progress'
       ? isSocketConnected && !isPresentingTransition
       : true;
-  const clearTimers = (): void => {
-    if (displayCommitTimerRef.current !== null) {
-      window.clearTimeout(displayCommitTimerRef.current);
-      displayCommitTimerRef.current = null;
-    }
-    if (animationTimerRef.current !== null) {
-      window.clearTimeout(animationTimerRef.current);
-      animationTimerRef.current = null;
-    }
-    if (chipFlightTimerRef.current !== null) {
-      window.clearTimeout(chipFlightTimerRef.current);
-      chipFlightTimerRef.current = null;
-    }
-    if (cardFlightTimerRef.current !== null) {
-      window.clearTimeout(cardFlightTimerRef.current);
-      cardFlightTimerRef.current = null;
-    }
-  };
-
-  const clearPresentationAnimations = (): void => {
-    setChipFlights([]);
-    setCardFlights([]);
-    setAnimationState(deriveRoomAnimationState(null, null));
-    setPlayerAnimations({});
-    setSourceChipBulges(emptySourceChipBulges);
-    setIsPresentingTransition(false);
-  };
 
   useLayoutEffect(() => {
     setSelection(initialSelection);
     setBankSelection([]);
     setDiscardSelection([]);
     setPurchaseSelection(createEmptyPaymentSelection());
-  }, [initialSelection, room?.stateVersion]);
+  }, [initialSelection, sourceRoom?.stateVersion]);
 
   useEffect(() => {
     setActivePanel(initialActivePanel);
@@ -770,260 +689,6 @@ export const RoomScene = ({
 
     previousRoomRef.current = sourceRoom;
   }, [sourceRoom]);
-
-  useEffect(() => {
-    if (!sourceRoom || !displayedRoom) {
-      clearTimers();
-      clearPresentationAnimations();
-      setDisplayedRoom(sourceRoom);
-      return;
-    }
-
-    if (sourceRoom.id !== displayedRoom.id) {
-      clearTimers();
-      clearPresentationAnimations();
-      setDisplayedRoom(sourceRoom);
-      return;
-    }
-
-    if (sourceRoom.stateVersion === displayedRoom.stateVersion) {
-      return;
-    }
-
-    if (isPresentingTransition) {
-      return;
-    }
-
-    if (
-      !sourceRoom.game ||
-      !displayedRoom.game ||
-      sourceRoom.status !== 'in_progress' ||
-      displayedRoom.status !== 'in_progress'
-    ) {
-      clearTimers();
-      setDisplayedRoom(sourceRoom);
-      setAnimationState(deriveRoomAnimationState(displayedRoom, sourceRoom));
-      setPlayerAnimations(
-        displayedRoom.game && sourceRoom.game
-          ? derivePlayerReceiveAnimations(displayedRoom.game, sourceRoom.game)
-          : {},
-      );
-      animationTimerRef.current = window.setTimeout(() => {
-        clearPresentationAnimations();
-      }, transitionSettleMs);
-      return;
-    }
-
-    clearTimers();
-    clearPresentationAnimations();
-
-    const previousGame = displayedRoom.game;
-    const nextGame = sourceRoom.game;
-
-    const nextCardFlights = nextGame.players.flatMap((nextPlayer, index) => {
-      const previousPlayer = previousGame.players[index];
-
-      if (!previousPlayer) {
-        return [];
-      }
-
-      const addedReservedCards = nextPlayer.reservedCards.filter(
-        (card) => !previousPlayer.reservedCards.some((entry) => entry.id === card.id),
-      );
-      const addedPurchasedCards = nextPlayer.purchasedCards.filter(
-        (card) => !previousPlayer.purchasedCards.some((entry) => entry.id === card.id),
-      );
-
-      const reserveFlights = addedReservedCards.flatMap((card, flightIndex) => {
-        const wasVisibleInMarket = cardTierOrder.some((tier) =>
-          previousGame.market[`tier${tier}`].some((entry) => entry.id === card.id),
-        );
-        const sourceRect =
-          (wasVisibleInMarket
-            ? marketCardRefs.current[card.id]?.getBoundingClientRect()
-            : deckRefs.current[card.tier]?.getBoundingClientRect()) ?? null;
-        const targetRect =
-          playerReservedTargetRefs.current[nextPlayer.identity.id]?.getBoundingClientRect() ?? null;
-
-        if (!sourceRect || !targetRect) {
-          return [];
-        }
-
-        return [
-          {
-            kind: wasVisibleInMarket ? 'reserve-visible' : 'reserve-deck',
-            card,
-            fromX: sourceRect.left,
-            fromY: sourceRect.top,
-            id: `${sourceRoom.stateVersion}-reserve-${card.id}-${flightIndex}`,
-            tier: card.tier,
-            toX: targetRect.left,
-            toY: targetRect.top,
-          },
-        ] satisfies readonly CardFlight[];
-      });
-
-      const purchaseFlights = addedPurchasedCards.flatMap((card, flightIndex) => {
-        const sourceRect =
-          (previousPlayer.reservedCards.some((entry) => entry.id === card.id)
-            ? playerReservedTargetRefs.current[nextPlayer.identity.id]?.getBoundingClientRect()
-            : marketCardRefs.current[card.id]?.getBoundingClientRect()) ?? null;
-        const targetRect =
-          playerTableauTargetRefs.current[nextPlayer.identity.id]?.getBoundingClientRect() ?? null;
-
-        if (!sourceRect || !targetRect) {
-          return [];
-        }
-
-        return [
-          {
-            kind: previousPlayer.reservedCards.some((entry) => entry.id === card.id)
-              ? 'purchase-reserved'
-              : 'purchase-visible',
-            card,
-            fromX: sourceRect.left,
-            fromY: sourceRect.top,
-            id: `${sourceRoom.stateVersion}-purchase-${card.id}-${flightIndex}`,
-            tier: card.tier,
-            toX: targetRect.left,
-            toY: targetRect.top,
-          },
-        ] satisfies readonly CardFlight[];
-      });
-
-      const addedNobles = nextPlayer.nobles.filter(
-        (noble) => !previousPlayer.nobles.some((entry) => entry.id === noble.id),
-      );
-      const nobleFlights = addedNobles.flatMap((noble, flightIndex) => {
-        const fallbackOrigin = getFallbackNobleFlightOrigin();
-        const sourceRect =
-          ({
-            height: 80,
-            left: fallbackOrigin.x,
-            top: fallbackOrigin.y,
-            width: 80,
-          } satisfies Pick<DOMRect, 'height' | 'left' | 'top' | 'width'>);
-        const targetRect =
-          playerNobleTargetRefs.current[nextPlayer.identity.id]?.getBoundingClientRect() ?? null;
-
-        if (!targetRect) {
-          return [];
-        }
-
-        return [
-          {
-            kind: 'noble',
-            fromX: sourceRect.left,
-            fromY: sourceRect.top,
-            id: `${sourceRoom.stateVersion}-noble-${noble.id}-${flightIndex}`,
-            noble,
-            toX: targetRect.left,
-            toY: targetRect.top,
-          },
-        ] satisfies readonly CardFlight[];
-      });
-
-      return [...reserveFlights, ...purchaseFlights, ...nobleFlights];
-    });
-
-    const previousActor = previousGame.players[previousGame.turn.activePlayerIndex];
-    const nextActor = nextGame.players.find(
-      (player) => player.identity.id === previousActor?.identity.id,
-    );
-    const nextChipFlights: readonly ChipFlight[] =
-      previousGame.turn.kind === 'main-action' && previousActor && nextActor
-        ? gemOrder
-            .flatMap((color) => {
-              const delta = nextActor.tokens[color] - previousActor.tokens[color];
-              const bankRect = bankChipRefs.current[color]?.getBoundingClientRect() ?? null;
-              const playerRect =
-                playerChipTargetRefs.current[nextActor.identity.id]?.getBoundingClientRect() ?? null;
-
-              if (!bankRect || !playerRect || delta === 0) {
-                return [];
-              }
-
-              const count = Math.min(Math.abs(delta), 3);
-
-              return Array.from({ length: count }, (_, index) => ({
-                color,
-                fromX:
-                  delta > 0
-                    ? bankRect.left + bankRect.width / 2 - 14
-                    : playerRect.left + Math.min(28 + index * 16, playerRect.width - 18),
-                fromY:
-                  delta > 0
-                    ? bankRect.top + bankRect.height / 2 - 14
-                    : playerRect.top + playerRect.height / 2 - 14,
-                id: `${sourceRoom.stateVersion}-${color}-${index}`,
-                toX:
-                  delta > 0
-                    ? playerRect.left + Math.min(28 + index * 16, playerRect.width - 18)
-                    : bankRect.left + bankRect.width / 2 - 14,
-                toY:
-                  delta > 0
-                    ? playerRect.top + playerRect.height / 2 - 14
-                    : bankRect.top + bankRect.height / 2 - 14,
-              }));
-            })
-            .slice(0, 5)
-        : [];
-
-    const shouldDelayPresentation = nextChipFlights.length > 0 || nextCardFlights.length > 0;
-
-    if (!shouldDelayPresentation) {
-      setIsPresentingTransition(false);
-      setDisplayedRoom(sourceRoom);
-      setAnimationState(deriveRoomAnimationState(displayedRoom, sourceRoom));
-      setPlayerAnimations(derivePlayerReceiveAnimations(previousGame, nextGame));
-      animationTimerRef.current = window.setTimeout(() => {
-        clearPresentationAnimations();
-      }, transitionSettleMs);
-      return;
-    }
-
-    setChipFlights(nextChipFlights);
-    setCardFlights(nextCardFlights.slice(0, 2));
-    setSourceChipBulges({
-      bankColors:
-        previousActor && nextActor
-          ? gemOrder.filter((color) => nextActor.tokens[color] > previousActor.tokens[color])
-          : [],
-      playerColorsById:
-        previousActor && nextActor
-          ? {
-              [nextActor.identity.id]: gemOrder.filter(
-                (color) => nextActor.tokens[color] < previousActor.tokens[color],
-              ),
-            }
-          : {},
-    });
-    setIsPresentingTransition(true);
-    setDisplayedRoom(
-      nextChipFlights.length > 0
-        ? createChipTransferPresentation(displayedRoom, sourceRoom)
-        : displayedRoom,
-    );
-
-    displayCommitTimerRef.current = window.setTimeout(() => {
-      setChipFlights([]);
-      setCardFlights([]);
-      setDisplayedRoom(createPostFlightPresentation(displayedRoom, sourceRoom));
-      setAnimationState(deriveRoomAnimationState(displayedRoom, sourceRoom));
-      setPlayerAnimations(derivePlayerReceiveAnimations(previousGame, nextGame));
-      displayCommitTimerRef.current = null;
-      animationTimerRef.current = window.setTimeout(() => {
-        setDisplayedRoom(sourceRoom);
-        clearPresentationAnimations();
-      }, transitionSettleMs + transitionGapMs);
-    }, transitionDelayMs);
-  }, [displayedRoom, isPresentingTransition, sourceRoom]);
-
-  useEffect(() => {
-    return () => {
-      clearTimers();
-    };
-  }, []);
 
   useEffect(() => {
     setPurchaseSelection(createEmptyPaymentSelection());
@@ -1074,11 +739,42 @@ export const RoomScene = ({
       ? game?.players.find((player) => player.identity.id === selection.playerId) ?? null
       : null;
   const hiddenMarketCardIds = new Set(
-    cardFlights
-      .filter((flight) => flight.kind === 'purchase-visible' || flight.kind === 'reserve-visible')
-      .flatMap((flight) => (flight.card ? [flight.card.id] : [])),
+    game
+      ? cardTierOrder.flatMap((tier) =>
+          game.market[`tier${tier}`]
+            .filter((card) =>
+              animationFrame.activeTargets.fadePlaceholder.has(animationTargets.marketCard(card.id)),
+            )
+            .map((card) => card.id),
+        )
+      : [],
   );
   const activePlayer = game?.players[game.turn.activePlayerIndex] ?? null;
+  const noblesById = useMemo(() => {
+    const entries = new Map<string, GameState['nobles'][number]>();
+
+    for (const noble of NOBLES) {
+      entries.set(noble.id, noble);
+    }
+
+    for (const roomState of [room, sourceRoom]) {
+      if (!roomState?.game) {
+        continue;
+      }
+
+      for (const noble of roomState.game.nobles) {
+        entries.set(noble.id, noble);
+      }
+
+      for (const player of roomState.game.players) {
+        for (const noble of player.nobles) {
+          entries.set(noble.id, noble);
+        }
+      }
+    }
+
+    return entries;
+  }, [room, sourceRoom]);
   const noblesInPlay =
     game
       ? [
@@ -1110,6 +806,37 @@ export const RoomScene = ({
     game && interaction
       ? turnBannerCopy(game, interaction.isCurrentUsersTurn, interaction.activePlayerName)
       : 'Waiting for room state';
+  const reservedPurchaseFlightStep = useMemo(() => {
+    if (animationFrame.currentPlan?.kind !== 'purchase-reserved') {
+      return null;
+    }
+
+    return (
+      animationFrame.currentPlan.phases
+        .flatMap((phase) => phase.steps)
+        .find(
+          (step): step is Extract<AnimationStep, { readonly primitive: 'flight-card' }> =>
+            step.primitive === 'flight-card' &&
+            step.flights.some((flight) => flight.kind === 'purchase-reserved'),
+        ) ?? null
+    );
+  }, [animationFrame.currentPlan]);
+  const reservedExpandTargetId = Array.from(animationFrame.activeTargets.expandCard).find((targetId) =>
+    targetId.startsWith('player:') && targetId.endsWith(':reserved'),
+  );
+  const reservedExpandPlayerId = reservedExpandTargetId?.split(':')[1] ?? null;
+  const reservedExpandCard =
+    reservedExpandPlayerId && reservedPurchaseFlightStep
+      ? reservedPurchaseFlightStep.flights.find((flight) => flight.kind === 'purchase-reserved')?.card ??
+        null
+      : null;
+  const reservedExpandTier =
+    reservedExpandPlayerId && reservedPurchaseFlightStep
+      ? reservedPurchaseFlightStep.flights.find((flight) => flight.kind === 'purchase-reserved')?.tier ??
+        null
+      : null;
+  const reservedExpandRect =
+    reservedExpandTargetId ? resolveTargetRect(reservedExpandTargetId) : null;
 
   const toggleBankColor = (color: TokenColor) => {
     setSelection({ type: 'bank' });
@@ -1178,7 +905,7 @@ export const RoomScene = ({
                 <span
                   key={`bank-${color}`}
                   ref={(node) => {
-                    bankChipRefs.current[color] = node;
+                    targetNodeRefs.current[animationTargets.bankChip(color)] = node;
                   }}
                   className={`${color === 'gold' ? 'ml-2' : ''} ${
                     sourceChipBulges.bankColors.includes(color) ? 'receive-bulge' : ''
@@ -1206,7 +933,7 @@ export const RoomScene = ({
                   <div className="grid grid-cols-5 gap-1.5">
                     <div
                       ref={(node) => {
-                        deckRefs.current[tier] = node;
+                        targetNodeRefs.current[animationTargets.deck(tier)] = node;
                       }}
                       className={animationState.changedDeckTiers.includes(tier) ? 'board-piece-bounce' : ''}
                     >
@@ -1227,7 +954,7 @@ export const RoomScene = ({
                       <div
                         key={card.id}
                         ref={(node) => {
-                          marketCardRefs.current[card.id] = node;
+                          targetNodeRefs.current[animationTargets.marketCard(card.id)] = node;
                         }}
                         className={animationState.changedMarketCardIds.includes(card.id) ? 'board-piece-pop' : ''}
                       >
@@ -1931,7 +1658,10 @@ export const RoomScene = ({
   const actionSheetContent = renderActionSheetContent();
 
   return (
-    <main className="min-h-screen bg-[radial-gradient(circle_at_top,_rgba(251,191,36,0.16),_transparent_22%),radial-gradient(circle_at_bottom_right,_rgba(56,189,248,0.14),_transparent_28%),linear-gradient(180deg,_#1e140f,_#090d15)] pb-28 text-stone-100">
+    <main
+      className="min-h-screen bg-[radial-gradient(circle_at_top,_rgba(251,191,36,0.16),_transparent_22%),radial-gradient(circle_at_bottom_right,_rgba(56,189,248,0.14),_transparent_28%),linear-gradient(180deg,_#1e140f,_#090d15)] pb-28 text-stone-100"
+      style={animationCssVars}
+    >
       <div className="mx-auto flex max-w-md flex-col gap-2 px-2 py-2">
         <header className="sticky top-0 z-30 rounded-[1rem] border border-white/10 bg-stone-950/90 px-2.5 py-2 shadow-[0_14px_36px_rgba(0,0,0,0.28)] backdrop-blur">
           <div className="flex items-center gap-2">
@@ -1997,13 +1727,15 @@ export const RoomScene = ({
                   {playerSummaries.map((player) => (
                     <PlayerSummaryRow
                       chipTargetRef={(node) => {
-                        playerChipTargetRefs.current[player.id] = node;
+                        for (const color of gemOrder) {
+                          targetNodeRefs.current[animationTargets.playerChip(player.id, color)] = node;
+                        }
                       }}
                       key={`summary-${player.id}`}
                       currentUserId={currentUserId}
                       isRecentlyUpdated={animationState.changedPlayerIds.includes(player.id)}
                       nobleTargetRef={(node) => {
-                        playerNobleTargetRefs.current[player.id] = node;
+                        targetNodeRefs.current[animationTargets.playerNobles(player.id)] = node;
                       }}
                       playerAnimation={playerAnimations[player.id] ?? emptyPlayerReceiveAnimation}
                       sourceChipBulges={sourceChipBulges.playerColorsById[player.id] ?? []}
@@ -2015,10 +1747,10 @@ export const RoomScene = ({
                       player={player}
                       room={room}
                       reservedTargetRef={(node) => {
-                        playerReservedTargetRefs.current[player.id] = node;
+                        targetNodeRefs.current[animationTargets.playerReserved(player.id)] = node;
                       }}
                       tableauTargetRef={(node) => {
-                        playerTableauTargetRefs.current[player.id] = node;
+                        targetNodeRefs.current[animationTargets.playerTableau(player.id)] = node;
                       }}
                     />
                   ))}
@@ -2120,6 +1852,31 @@ export const RoomScene = ({
         />
       ))}
 
+      {reservedExpandRect && reservedExpandCard && reservedExpandTier ? (
+        <div
+          aria-hidden="true"
+          className="fixed z-50 pointer-events-none w-[4.6rem] card-expand-only"
+          style={
+            {
+              left: `${reservedExpandRect.left}px`,
+              top: `${reservedExpandRect.top}px`,
+            } as CSSProperties
+          }
+        >
+          <div className="card-expand-only-inner relative aspect-[5/7] w-full">
+            <div
+              className="card-flight-face absolute inset-0"
+              style={{ transform: 'rotateY(180deg)' }}
+            >
+              <DeckCard hideCount remainingCount={0} size="compact" tier={reservedExpandTier} />
+            </div>
+            <div className="card-flight-face absolute inset-0">
+              <SplendorCard card={reservedExpandCard} size="compact" />
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       {cardFlights.map((flight) => (
         <div
           key={flight.id}
@@ -2129,9 +1886,7 @@ export const RoomScene = ({
           } ${
             flight.kind === 'reserve-visible'
               ? 'card-flight-flip'
-              : flight.kind === 'purchase-reserved'
-                ? 'card-flight-purchase-reserved'
-                : ''
+              : ''
           }`}
           style={
             {
@@ -2142,22 +1897,10 @@ export const RoomScene = ({
             } as CSSProperties
           }
         >
-          {flight.kind === 'noble' && flight.noble ? (
-            <NobleTile noble={flight.noble} size="compact" />
+          {flight.kind === 'noble' ? (
+            <NobleTile noble={noblesById.get(flight.nobleId ?? '') ?? NOBLES[0]!} size="compact" />
           ) : flight.kind === 'reserve-deck' && flight.tier ? (
             <DeckCard hideCount remainingCount={0} size="compact" tier={flight.tier} />
-          ) : flight.kind === 'purchase-reserved' && flight.card && flight.tier ? (
-            <div className="card-flight-purchase-reserved-inner relative aspect-[5/7] w-full">
-              <div
-                className="card-flight-face absolute inset-0"
-                style={{ transform: 'rotateY(180deg)' }}
-              >
-                <DeckCard hideCount remainingCount={0} size="compact" tier={flight.tier} />
-              </div>
-              <div className="card-flight-face absolute inset-0">
-                <SplendorCard card={flight.card} size="compact" />
-              </div>
-            </div>
           ) : flight.kind === 'reserve-visible' && flight.card && flight.tier ? (
             <div className="card-flight-flip-inner relative aspect-[5/7] w-full">
               <div className="card-flight-face absolute inset-0">
