@@ -1008,6 +1008,7 @@ export const RoomScene = ({
       : [],
   );
   const activePlayer = game?.players[game.turn.activePlayerIndex] ?? null;
+  const viewingPlayer = game?.players.find((player) => player.identity.id === currentUserId) ?? null;
   const noblesById = useMemo(() => {
     const entries = new Map<string, GameState['nobles'][number]>();
 
@@ -1542,11 +1543,13 @@ export const RoomScene = ({
       game?.turn.kind === 'main-action' &&
       canSubmitRealtimeMoves;
     const autoPayment = activePlayer ? getAutoPayment(activePlayer, card) : null;
-    const effectiveCost = activePlayer ? getCardEffectiveCost(activePlayer, card) : createEmptyPaymentSelection().tokens;
+    const viewerAutoPayment = viewingPlayer ? getAutoPayment(viewingPlayer, card) : null;
+    const effectiveCost = viewingPlayer ? getCardEffectiveCost(viewingPlayer, card) : createEmptyPaymentSelection().tokens;
     const manualSelectedCount = totalSelectedPayment(purchaseSelection);
     const manualPaymentValid =
       activePlayer !== null && isValidPaymentForCard(activePlayer, card, purchaseSelection);
     const totalEffectiveCost = tokenColorOrder.reduce((sum, color) => sum + effectiveCost[color], 0);
+    const goldNeeded = viewerAutoPayment?.gold ?? 0;
 
     const addPaymentToken = (color: GemColor) => {
       if (!activePlayer) {
@@ -1611,7 +1614,7 @@ export const RoomScene = ({
           </div>
           <div className="min-w-0 flex-1 space-y-3">
             <section className="space-y-2">
-              <p className="text-xs uppercase tracking-[0.24em] text-stone-500">Effective cost</p>
+              <p className="text-xs uppercase tracking-[0.24em] text-stone-500">Your effective cost</p>
               <div className="flex flex-wrap gap-2">
                 {tokenColorOrder
                   .filter((color) => effectiveCost[color] > 0)
@@ -1623,7 +1626,15 @@ export const RoomScene = ({
                       size="sm"
                     />
                   ))}
-                {totalEffectiveCost === 0 ? (
+                {goldNeeded > 0 ? (
+                  <GemPip
+                    key={`effective-cost-${card.id}-gold`}
+                    color="gold"
+                    count={goldNeeded}
+                    size="sm"
+                  />
+                ) : null}
+                {totalEffectiveCost === 0 && goldNeeded === 0 ? (
                   <span className="text-sm text-stone-400">Free with discounts</span>
                 ) : null}
               </div>
