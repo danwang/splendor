@@ -12,7 +12,17 @@ import {
   type TokenColor,
 } from '@splendor/game-engine';
 import {
+  ChevronFirst,
+  ChevronLast,
+  ChevronLeft,
+  ChevronRight,
+  Pause,
+  Play,
+  Undo,
+} from 'lucide-react';
+import {
   type CSSProperties,
+  type ReactNode,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -74,6 +84,28 @@ interface ReplaySelection {
   readonly entryId: string;
   readonly nonce: number;
 }
+
+const ReplayIconButton = ({
+  children,
+  disabled = false,
+  label,
+  onClick,
+}: {
+  readonly children: ReactNode;
+  readonly disabled?: boolean;
+  readonly label: string;
+  readonly onClick: () => void;
+}) => (
+  <button
+    aria-label={label}
+    className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-sky-200/18 bg-sky-950/26 text-sky-50 transition hover:bg-sky-950/40 disabled:cursor-not-allowed disabled:opacity-35"
+    disabled={disabled}
+    onClick={onClick}
+    type="button"
+  >
+    {children}
+  </button>
+);
 
 const tokenRingStyles: Readonly<Record<TokenColor, string>> = {
   white: 'outline-stone-300/80',
@@ -720,9 +752,11 @@ export const RoomScene = ({
   const [showGameComplete, setShowGameComplete] = useState(
     initialResultsVisible ?? sourceRoom?.game?.status === 'finished',
   );
+  const [isReplayPlaying, setIsReplayPlaying] = useState(false);
   const [replaySelection, setReplaySelection] = useState<ReplaySelection | null>(null);
   const playerSummaryContainerRef = useRef<HTMLDivElement | null>(null);
   const playerSummaryRowRefs = useRef<Partial<Record<string, HTMLButtonElement | null>>>({});
+  const replayWasAnimatingRef = useRef(false);
   const targetNodeRefs = useRef<Partial<Record<string, HTMLElement | null>>>({});
   const overlayRectCacheRef = useRef<{
     readonly planId: string | null;
@@ -909,6 +943,7 @@ export const RoomScene = ({
       (!roomHistoryByVersion.has(replaySelection.beforeStateVersion) ||
         !roomHistoryByVersion.has(replaySelection.afterStateVersion))
     ) {
+      setIsReplayPlaying(false);
       setReplaySelection(null);
     }
   }, [replaySelection, roomHistoryByVersion]);
@@ -1054,10 +1089,34 @@ export const RoomScene = ({
     replayIndex >= 0 && replayIndex < replayableEntries.length - 1
       ? replayableEntries[replayIndex + 1] ?? null
       : null;
+  const latestReplayEntry =
+    replayableEntries.length > 0 ? replayableEntries[replayableEntries.length - 1] ?? null : null;
   const liveAdvancedWhileReplaying =
     replaySelection !== null &&
     sourceRoom !== null &&
     sourceRoom.stateVersion > replaySelection.afterStateVersion;
+  useEffect(() => {
+    if (!replaySelection || !isReplayPlaying) {
+      replayWasAnimatingRef.current = isPresentingTransition;
+      return;
+    }
+
+    if (!replayWasAnimatingRef.current && !isPresentingTransition) {
+      replayCurrentEntry();
+      replayWasAnimatingRef.current = true;
+      return;
+    }
+
+    if (replayWasAnimatingRef.current && !isPresentingTransition) {
+      if (nextReplayEntry) {
+        startReplay(nextReplayEntry);
+      } else {
+        setIsReplayPlaying(false);
+      }
+    }
+
+    replayWasAnimatingRef.current = isPresentingTransition;
+  }, [isPresentingTransition, isReplayPlaying, nextReplayEntry, replaySelection]);
   const reservedPurchaseFlightStep = useMemo(() => {
     if (animationFrame.currentPlan?.kind !== 'purchase-reserved') {
       return null;
@@ -1240,6 +1299,11 @@ export const RoomScene = ({
     });
   };
 
+  const selectReplayEntry = (entry: RoomActivityEntry) => {
+    setIsReplayPlaying(false);
+    startReplay(entry);
+  };
+
   const replayCurrentEntry = () => {
     if (!replaySelection) {
       return;
@@ -1257,6 +1321,7 @@ export const RoomScene = ({
   };
 
   const stopReplay = () => {
+    setIsReplayPlaying(false);
     setReplaySelection(null);
   };
 
@@ -2064,6 +2129,16 @@ export const RoomScene = ({
                 Connecting
               </span>
             ) : null}
+            {replaySelection === null && latestReplayEntry ? (
+              <button
+                aria-label="Enter replay mode"
+                className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-sky-200/18 bg-sky-950/26 text-sky-50 transition hover:bg-sky-950/40"
+                onClick={() => selectReplayEntry(latestReplayEntry)}
+                type="button"
+              >
+                <Undo aria-hidden="true" className="h-4 w-4" />
+              </button>
+            ) : null}
             <button
               className="rounded-full border border-white/12 bg-white/5 px-2.5 py-1 text-[11px] font-medium text-stone-100 transition hover:border-white/20 hover:bg-white/8"
               onClick={() => setSelection({ type: 'menu' })}
@@ -2081,6 +2156,68 @@ export const RoomScene = ({
               </button>
             ) : null}
           </div>
+          {replaySelection && replayEntry ? (
+            <div className="mt-2 flex items-center gap-2 rounded-[0.9rem] border border-sky-300/18 bg-sky-300/8 px-2 py-2">
+              <div className="min-w-0 flex-1">
+                <p className="text-[9px] uppercase tracking-[0.16em] text-sky-200/80">Replay</p>
+                <p className="truncate text-[11px] text-sky-50">
+                  {replayIndex + 1} / {replayableEntries.length}
+                  {liveAdvancedWhileReplaying && sourceRoom ? ` • Live v${sourceRoom.stateVersion}` : ''}
+                </p>
+              </div>
+              <div className="flex items-center gap-1">
+                <ReplayIconButton
+                  disabled={replayIndex <= 0}
+                  label="Rewind to beginning"
+                  onClick={() => {
+                    const firstReplayEntry = replayableEntries[0];
+
+                    if (firstReplayEntry) {
+                      selectReplayEntry(firstReplayEntry);
+                    }
+                  }}
+                >
+                  <ChevronFirst aria-hidden="true" className="h-4 w-4" />
+                </ReplayIconButton>
+                <ReplayIconButton
+                  disabled={!previousReplayEntry}
+                  label="Previous step"
+                  onClick={() => {
+                    if (previousReplayEntry) {
+                      selectReplayEntry(previousReplayEntry);
+                    }
+                  }}
+                >
+                  <ChevronLeft aria-hidden="true" className="h-4 w-4" />
+                </ReplayIconButton>
+                <ReplayIconButton
+                  disabled={replayableEntries.length === 0}
+                  label={isReplayPlaying ? 'Pause replay' : 'Play replay'}
+                  onClick={() => setIsReplayPlaying((current) => !current)}
+                >
+                  {isReplayPlaying ? (
+                    <Pause aria-hidden="true" className="h-4 w-4" />
+                  ) : (
+                    <Play aria-hidden="true" className="h-4 w-4 fill-current" />
+                  )}
+                </ReplayIconButton>
+                <ReplayIconButton
+                  disabled={!nextReplayEntry}
+                  label="Next step"
+                  onClick={() => {
+                    if (nextReplayEntry) {
+                      selectReplayEntry(nextReplayEntry);
+                    }
+                  }}
+                >
+                  <ChevronRight aria-hidden="true" className="h-4 w-4" />
+                </ReplayIconButton>
+                <ReplayIconButton label="Jump to live" onClick={stopReplay}>
+                  <ChevronLast aria-hidden="true" className="h-4 w-4" />
+                </ReplayIconButton>
+              </div>
+            </div>
+          ) : null}
           {(canJoin || canStart) ? (
             <div className="mt-2 flex flex-wrap gap-1.5">
               {canJoin ? (
@@ -2101,65 +2238,6 @@ export const RoomScene = ({
           <div className="rounded-[1rem] border border-rose-400/20 bg-rose-400/10 px-3 py-2 text-xs text-rose-100">
             {errorMessage}
           </div>
-        ) : null}
-
-        {replaySelection && replayEntry ? (
-          <section className="rounded-[1rem] border border-sky-300/20 bg-sky-300/10 px-3 py-3 shadow-[0_14px_36px_rgba(0,0,0,0.24)]">
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0">
-                <p className="text-[10px] uppercase tracking-[0.18em] text-sky-200/80">
-                  Replay mode
-                </p>
-                <p className="mt-1 text-sm font-medium text-sky-50">{replayEntry.message}</p>
-                <p className="mt-1 text-xs text-sky-100/75">
-                  Move {replayIndex + 1} of {replayableEntries.length}
-                  {liveAdvancedWhileReplaying && sourceRoom
-                    ? ` • Live game is now at v${sourceRoom.stateVersion}`
-                    : ''}
-                </p>
-              </div>
-              <button
-                className="rounded-full border border-sky-200/20 bg-sky-950/30 px-3 py-1.5 text-xs font-medium text-sky-50 transition hover:bg-sky-950/45"
-                onClick={stopReplay}
-                type="button"
-              >
-                Live
-              </button>
-            </div>
-            <div className="mt-3 grid grid-cols-3 gap-2">
-              <button
-                className={subtleButtonClass}
-                disabled={!previousReplayEntry}
-                onClick={() => {
-                  if (previousReplayEntry) {
-                    startReplay(previousReplayEntry);
-                  }
-                }}
-                type="button"
-              >
-                Previous
-              </button>
-              <button
-                className={primaryButtonClass}
-                onClick={replayCurrentEntry}
-                type="button"
-              >
-                Replay
-              </button>
-              <button
-                className={subtleButtonClass}
-                disabled={!nextReplayEntry}
-                onClick={() => {
-                  if (nextReplayEntry) {
-                    startReplay(nextReplayEntry);
-                  }
-                }}
-                type="button"
-              >
-                Next
-              </button>
-            </div>
-          </section>
         ) : null}
 
         {room ? (
