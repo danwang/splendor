@@ -129,6 +129,40 @@ const countTokenSelection = (
     };
   }, {} as Record<TokenColor, number>);
 
+const normalizeTokenSelection = (tokens: readonly TokenColor[]): readonly TokenColor[] =>
+  [...tokens].sort((left, right) => tokenColorOrder.indexOf(left) - tokenColorOrder.indexOf(right));
+
+const selectionCanBecomeLegalBankMove = (
+  tokens: readonly TokenColor[],
+  interaction: ReturnType<typeof deriveInteractionModel> | null,
+): boolean => {
+  if (!interaction || tokens.length === 0 || tokens.length > 3) {
+    return false;
+  }
+
+  const normalizedSelection = normalizeTokenSelection(tokens);
+
+  return (
+    interaction.distinctMoves.some((move) => {
+      const normalizedMove = normalizeTokenSelection(move.colors);
+
+      return (
+        normalizedSelection.length <= normalizedMove.length &&
+        normalizedSelection.every((color, index) => color === normalizedMove[index])
+      );
+    }) ||
+    tokenColorOrder.some((color) => {
+      const pairMove = interaction.pairMovesByColor[color];
+
+      return (
+        pairMove !== undefined &&
+        normalizedSelection.length <= 2 &&
+        normalizedSelection.every((entry) => entry === color)
+      );
+    })
+  );
+};
+
 const totalSelectedPayment = (payment: PaymentSelection): number =>
   tokenColorOrder.reduce((sum, color) => sum + payment.tokens[color], payment.gold);
 
@@ -226,17 +260,17 @@ const reservedMarkerStyles = [
 
 const floatingChipStyles: Readonly<Record<GemColor, string>> = {
   white:
-    'border border-stone-300/85 bg-stone-100 text-stone-900 shadow-[0_0_0_1px_rgba(255,255,255,0.45),0_10px_22px_rgba(255,255,255,0.18)]',
+    'border border-stone-400/85 bg-stone-200 text-stone-900 shadow-[0_0_0_1px_rgba(255,255,255,0.45),0_10px_22px_rgba(255,255,255,0.18)]',
   blue:
-    'bg-sky-400 text-sky-950 shadow-[0_0_0_1px_rgba(125,211,252,0.22),0_10px_22px_rgba(56,189,248,0.28)]',
+    'border border-sky-500/70 bg-sky-100 text-sky-900 shadow-[0_0_0_1px_rgba(125,211,252,0.22),0_10px_22px_rgba(56,189,248,0.22)]',
   green:
-    'bg-emerald-400 text-emerald-950 shadow-[0_0_0_1px_rgba(110,231,183,0.22),0_10px_22px_rgba(52,211,153,0.28)]',
+    'border border-emerald-500/70 bg-emerald-100 text-emerald-900 shadow-[0_0_0_1px_rgba(110,231,183,0.22),0_10px_22px_rgba(52,211,153,0.22)]',
   red:
-    'bg-rose-400 text-rose-950 shadow-[0_0_0_1px_rgba(253,164,175,0.22),0_10px_22px_rgba(251,113,133,0.28)]',
+    'border border-rose-500/70 bg-rose-100 text-rose-900 shadow-[0_0_0_1px_rgba(253,164,175,0.22),0_10px_22px_rgba(251,113,133,0.22)]',
   black:
-    'border border-stone-600/80 bg-stone-900 text-stone-100 shadow-[0_0_0_1px_rgba(120,113,108,0.35),0_10px_22px_rgba(24,24,27,0.34)]',
+    'border border-slate-500/80 bg-slate-300 text-slate-950 shadow-[0_0_0_1px_rgba(120,113,108,0.35),0_10px_22px_rgba(24,24,27,0.24)]',
   gold:
-    'bg-amber-300 text-amber-950 shadow-[0_0_0_1px_rgba(253,230,138,0.2),0_10px_22px_rgba(252,211,77,0.3)]',
+    'border border-amber-400/70 bg-amber-100 text-amber-900 shadow-[0_0_0_1px_rgba(253,230,138,0.2),0_10px_22px_rgba(252,211,77,0.24)]',
 };
 
 const emptyPlayerReceiveAnimation: PlayerReceiveAnimation = {
@@ -768,6 +802,7 @@ export const RoomScene = ({
   const cardFlights = animationFrame.cardFlights;
   const isPresentingTransition = animationFrame.isAnimating;
   const wasFinishedRef = useRef(game?.status === 'finished');
+  const pendingFinishedOverlayRef = useRef(false);
   const joined = room ? currentUserIsParticipant(room.participants, currentUserId) : false;
   const canJoin = room !== null && !joined && room.status === 'waiting';
   const canStart =
@@ -820,20 +855,32 @@ export const RoomScene = ({
   }, [initialActivePanel]);
 
   useEffect(() => {
-    const isFinished = game?.status === 'finished';
+    const isFinished = sourceRoom?.game?.status === 'finished';
 
     if (isFinished && !wasFinishedRef.current) {
-      setShowGameComplete(true);
+      pendingFinishedOverlayRef.current = true;
       setSelection(null);
       setBankSelection([]);
       setDiscardSelection([]);
       setPurchaseSelection(createEmptyPaymentSelection());
     } else if (!isFinished) {
+      pendingFinishedOverlayRef.current = false;
       setShowGameComplete(false);
     }
 
     wasFinishedRef.current = isFinished;
-  }, [game?.status]);
+  }, [sourceRoom?.game?.status]);
+
+  useEffect(() => {
+    if (
+      sourceRoom?.game?.status === 'finished' &&
+      pendingFinishedOverlayRef.current &&
+      !isPresentingTransition
+    ) {
+      pendingFinishedOverlayRef.current = false;
+      setShowGameComplete(true);
+    }
+  }, [isPresentingTransition, sourceRoom?.game?.status]);
 
   useEffect(() => {
     if (
@@ -1099,12 +1146,31 @@ export const RoomScene = ({
     setBankSelection((current) => {
       const selectedCount = current.filter((candidate) => candidate === color).length;
       const availableCount = game?.bank[color] ?? 0;
+      const pairMove = interaction?.pairMovesByColor[color];
+
+      if (selectedCount > 1) {
+        const removalIndex = current.lastIndexOf(color);
+
+        return current.filter((_, index) => index !== removalIndex);
+      }
+
+      if (selectedCount === 1 && current.length === 1 && pairMove) {
+        return [...current, color];
+      }
+
+      if (selectedCount > 0) {
+        const removalIndex = current.lastIndexOf(color);
+
+        return current.filter((_, index) => index !== removalIndex);
+      }
 
       if (current.length >= 3 || selectedCount >= availableCount) {
         return current;
       }
 
-      return [...current, color];
+      const nextSelection = [...current, color];
+
+      return selectionCanBecomeLegalBankMove(nextSelection, interaction) ? nextSelection : current;
     });
   };
 
@@ -1621,17 +1687,7 @@ export const RoomScene = ({
       </p>
 
       <section className="space-y-3">
-        <div className="flex items-center justify-between gap-3">
-          <p className="text-xs uppercase tracking-[0.24em] text-stone-500">Selected {bankSelection.length}/3</p>
-          <button
-            className="text-xs uppercase tracking-[0.22em] text-stone-500 transition hover:text-stone-300 disabled:cursor-not-allowed disabled:opacity-35 disabled:hover:text-stone-500"
-            disabled={bankSelection.length === 0}
-            onClick={() => setBankSelection([])}
-            type="button"
-          >
-            Clear
-          </button>
-        </div>
+        <p className="text-xs uppercase tracking-[0.24em] text-stone-500">Selected {bankSelection.length}/3</p>
         <div className="flex flex-wrap gap-2.5">
           {tokenColorOrder.map((color) => {
             const selectedCount = countTokenSelection(bankSelection)[color];
@@ -1688,7 +1744,7 @@ export const RoomScene = ({
     return (
       <div className="space-y-5">
         <p className="text-sm leading-6 text-stone-300">
-          Tap tokens to move them into the discard pile. Submit once you have exactly {requiredCount}.
+          Tap tokens to move them into the discard pile. Tap selected tokens again to undo. Submit once you have exactly {requiredCount}.
         </p>
 
         <section className="space-y-3">
@@ -2087,7 +2143,7 @@ export const RoomScene = ({
 
         {room ? (
           <>
-            {game ? (
+            {game && !(showGameComplete && game.status === 'finished') ? (
               <section className="rounded-[1rem] border border-white/10 bg-stone-950/72 p-2 shadow-[0_14px_36px_rgba(0,0,0,0.24)]">
                 <div className="space-y-1.5">
                   {playerSummaries.map((player) => (
@@ -2127,7 +2183,7 @@ export const RoomScene = ({
                   ))}
                 </div>
               </section>
-            ) : (
+            ) : !game ? (
               <section className="rounded-[1rem] border border-white/10 bg-stone-950/72 p-3 shadow-[0_14px_36px_rgba(0,0,0,0.24)]">
                 <div className="space-y-2">
                   {room.participants.map((participant) => (
@@ -2159,7 +2215,7 @@ export const RoomScene = ({
                   ))}
                 </div>
               </section>
-            )}
+            ) : null}
 
             {game && showGameComplete && game.status === 'finished' ? (
               <GameCompleteScreen

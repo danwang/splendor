@@ -6,7 +6,7 @@ import { baseArgs, createRoom, withNoGoldReserve, withReservedPressure } from '.
 const reservedPressureGame = withReservedPressure();
 
 const meta = {
-  title: 'Game/RoomScene/Modals',
+  title: 'Game/Modals',
   component: RoomScene,
   args: baseArgs,
   parameters: {

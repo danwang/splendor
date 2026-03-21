@@ -195,8 +195,7 @@ const createPostFlightPresentation = (
   if (
     !previousRoom.game ||
     !nextRoom.game ||
-    previousRoom.status !== 'in_progress' ||
-    nextRoom.status !== 'in_progress'
+    previousRoom.status !== 'in_progress'
   ) {
     return nextRoom;
   }
@@ -335,9 +334,7 @@ const deriveTransitionKind = (
   if (
     !previousRoom.game ||
     !nextRoom.game ||
-    previousRoom.status !== 'in_progress' ||
-    nextRoom.status !== 'in_progress' ||
-    nextRoom.game.status === 'finished'
+    previousRoom.status !== 'in_progress'
   ) {
     return 'no-op';
   }
@@ -433,12 +430,16 @@ const createArrivalSteps = (
   return steps;
 };
 
-const createFinalPhase = (nextRoom: PublicRoomState): AnimationPhase => ({
+const createFinalPhase = (
+  nextRoom: PublicRoomState,
+  presentedRoom: PublicRoomState = nextRoom,
+  steps: readonly AnimationStep[] = [],
+): AnimationPhase => ({
   checkpointId: 'final',
   durationMs: animationTiming.turnHandoffGapMs,
   id: createSemanticId(nextRoom, 'phase-final'),
-  presentedRoom: nextRoom,
-  steps: [],
+  presentedRoom,
+  steps,
 });
 
 const createWaitPhase = (
@@ -630,6 +631,7 @@ const createReserveVisiblePlan = (
         'phase-hold',
         Math.max(animationTiming.cardHoldReserveVisibleMs, animationTiming.bulgeDurationMs),
         [
+          { primitive: 'fade-placeholder', targets: [animationTargets.marketCard(reservedCard.id)] },
           ...(destinationChipTargets.length > 0
             ? [{ primitive: 'bulge', targets: destinationChipTargets } as const]
             : []),
@@ -646,6 +648,7 @@ const createReserveVisiblePlan = (
         'phase-flip',
         animationTiming.flipDurationMs,
         [
+          { primitive: 'fade-placeholder', targets: [animationTargets.marketCard(reservedCard.id)] },
           {
             primitive: 'flip-card',
             targets: [animationTargets.playerReserved(nextActor.identity.id)],
@@ -658,6 +661,7 @@ const createReserveVisiblePlan = (
         id: createSemanticId(nextRoom, 'phase-land'),
         presentedRoom: chipArrivalRoom,
         steps: [
+          { primitive: 'fade-placeholder', targets: [animationTargets.marketCard(reservedCard.id)] },
           { primitive: 'land-card', targets: [animationTargets.playerReserved(nextActor.identity.id)] },
         ],
       },
@@ -809,7 +813,7 @@ const createMarketPurchasePlan = (
     .map((color) => animationTargets.bankChip(color));
 
   return {
-    checkpoints: buildCheckpoints(departureRoom, arrivalRoom, nextRoom),
+    checkpoints: buildCheckpoints(departureRoom, chipArrivalRoom, nextRoom),
     finalRoom: nextRoom,
     id: createSemanticId(nextRoom, 'market-purchase'),
     kind: 'market-purchase',
@@ -841,6 +845,7 @@ const createMarketPurchasePlan = (
         'phase-hold',
         Math.max(animationTiming.cardHoldPurchaseVisibleMs, animationTiming.bulgeDurationMs),
         [
+          { primitive: 'fade-placeholder', targets: [animationTargets.marketCard(purchasedCard.id)] },
           ...(bankTargets.length > 0 ? [{ primitive: 'bulge', targets: bankTargets } as const] : []),
           {
             primitive: 'hold-card',
@@ -852,15 +857,19 @@ const createMarketPurchasePlan = (
         checkpointId: 'arrival',
         durationMs: animationTiming.settleDurationMs,
         id: createSemanticId(nextRoom, 'phase-arrival'),
-        presentedRoom: arrivalRoom,
-        steps: createArrivalSteps(previousRoom, nextRoom, nextActor.identity.id, [
+        presentedRoom: chipArrivalRoom,
+        steps: [
+          { primitive: 'fade-placeholder', targets: [animationTargets.marketCard(purchasedCard.id)] },
           { primitive: 'land-card', targets: [animationTargets.playerTableau(nextActor.identity.id)] },
           { primitive: 'bulge', targets: [animationTargets.playerTableau(nextActor.identity.id)] },
           { primitive: 'bulge', targets: [animationTargets.playerTableauBonus(nextActor.identity.id, purchasedCard.bonus)] },
           { primitive: 'flip-number', targets: [animationTargets.playerScore(nextActor.identity.id)] },
-        ]),
+          { primitive: 'highlight-row', targets: [animationTargets.playerRow(nextActor.identity.id)] },
+        ],
       },
-      createFinalPhase(nextRoom),
+      createFinalPhase(nextRoom, chipArrivalRoom, [
+        { primitive: 'fade-placeholder', targets: [animationTargets.marketCard(purchasedCard.id)] },
+      ]),
     ],
   };
 };

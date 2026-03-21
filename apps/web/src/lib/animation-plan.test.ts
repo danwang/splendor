@@ -137,6 +137,16 @@ describe('deriveAnimationPlan', () => {
           step.targets.includes(animationTargets.playerTableau('p1')),
       ),
     ).toBe(true);
+    expect(plan?.phases[2]?.presentedRoom.game?.market.tier1.some((card) => card.id === targetCard.id)).toBe(
+      true,
+    );
+    expect(
+      plan?.phases[2]?.steps.some(
+        (step) =>
+          step.primitive === 'fade-placeholder' &&
+          step.targets.includes(animationTargets.marketCard(targetCard.id)),
+      ),
+    ).toBe(true);
   });
 
   it('keeps blind reserve hidden during the flight', () => {
@@ -295,12 +305,20 @@ describe('deriveAnimationPlan', () => {
         (step) => step.primitive === 'bulge' && step.targets.includes(animationTargets.playerChip('p1', 'gold')),
       ),
     ).toBe(true);
-    expect(plan?.phases[2]?.steps).toEqual([
-      {
-        primitive: 'flip-card',
-        targets: [animationTargets.playerReserved('p1')],
-      },
-    ]);
+    expect(
+      plan?.phases[2]?.steps.some(
+        (step) =>
+          step.primitive === 'flip-card' &&
+          step.targets.includes(animationTargets.playerReserved('p1')),
+      ),
+    ).toBe(true);
+    expect(
+      plan?.phases[2]?.steps.some(
+        (step) =>
+          step.primitive === 'fade-placeholder' &&
+          step.targets.includes(animationTargets.marketCard(targetCard.id)),
+      ),
+    ).toBe(true);
     expect(
       plan?.phases[3]?.steps.some(
         (step) =>

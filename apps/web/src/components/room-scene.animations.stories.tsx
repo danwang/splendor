@@ -618,7 +618,7 @@ const StaticRoomSequence = ({
 };
 
 const meta = {
-  title: 'Game/RoomScene/Animation Plans',
+  title: 'Game/Animation Plans',
   component: RoomScene,
   parameters: {
     viewport: {

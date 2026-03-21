@@ -230,7 +230,7 @@ const FlipNumberPreview = () => {
 };
 
 const meta = {
-  title: 'Game/RoomScene/Animation Primitives',
+  title: 'Game/Animation Primitives',
   parameters: {
     viewport: {
       defaultViewport: 'mobile1',

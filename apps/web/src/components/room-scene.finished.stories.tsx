@@ -6,7 +6,7 @@ import { baseArgs, createRoom, withFinishedGame } from './room-scene.story-helpe
 const finishedGame = withFinishedGame();
 
 const meta = {
-  title: 'Game/RoomScene/Finished',
+  title: 'Game/Finished',
   component: RoomScene,
   args: baseArgs,
   parameters: {

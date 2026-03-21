@@ -13,12 +13,18 @@ import noble10Image from '../images/noble-10.png';
 import { gemOrder } from '../lib/game-ui.js';
 
 const gemStyles: Readonly<Record<GemColor, string>> = {
-  white: 'bg-stone-100 text-stone-900 ring-1 ring-stone-300/80',
-  blue: 'bg-sky-400 text-sky-950',
-  green: 'bg-emerald-400 text-emerald-950',
-  red: 'bg-rose-400 text-rose-950',
-  black: 'bg-stone-900 text-stone-100 ring-1 ring-stone-600',
-  gold: 'bg-amber-300 text-amber-950 ring-1 ring-amber-200/40',
+  white:
+    'border-[3px] border-white/95 bg-[radial-gradient(circle_at_center,_rgba(231,229,228,1)_0%,_rgba(214,211,209,0.99)_68%,_rgba(189,184,181,0.98)_82%,_rgba(120,113,108,0.98)_100%)] text-stone-900 ring-1 ring-white/35',
+  blue:
+    'border-[3px] border-sky-600/80 bg-[radial-gradient(circle_at_center,_rgba(224,242,254,1)_0%,_rgba(186,230,253,0.98)_68%,_rgba(125,211,252,0.98)_82%,_rgba(14,116,144,0.98)_100%)] text-sky-950 ring-1 ring-sky-200/55',
+  green:
+    'border-[3px] border-emerald-600/80 bg-[radial-gradient(circle_at_center,_rgba(236,253,245,1)_0%,_rgba(209,250,229,0.98)_68%,_rgba(167,243,208,0.98)_82%,_rgba(6,95,70,0.98)_100%)] text-emerald-950 ring-1 ring-emerald-200/55',
+  red:
+    'border-[3px] border-rose-600/80 bg-[radial-gradient(circle_at_center,_rgba(255,241,242,1)_0%,_rgba(255,228,230,0.98)_68%,_rgba(254,205,211,0.98)_82%,_rgba(159,18,57,0.98)_100%)] text-rose-950 ring-1 ring-rose-200/55',
+  black:
+    'border-[3px] border-black/90 bg-[radial-gradient(circle_at_center,_rgba(226,232,240,0.96)_0%,_rgba(163,177,197,0.98)_68%,_rgba(116,132,154,0.98)_82%,_rgba(30,41,59,0.98)_100%)] text-black ring-1 ring-slate-100/25',
+  gold:
+    'border-[3px] border-amber-500/80 bg-[radial-gradient(circle_at_center,_rgba(255,251,235,1)_0%,_rgba(254,240,138,0.98)_66%,_rgba(253,224,71,0.98)_80%,_rgba(146,64,14,0.98)_100%)] text-amber-950 ring-1 ring-amber-200/55',
 };
 
 const gemIconStyles: Readonly<Record<TokenColor, string>> = {

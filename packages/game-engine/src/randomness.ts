@@ -17,10 +17,10 @@ const nextRandomState = (state: number): number => {
   return (next ^ (next >>> 14)) >>> 0;
 };
 
-const shuffleIds = (
-  ids: readonly string[],
+const shuffleIds = <T>(
+  ids: readonly T[],
   initialState: number,
-): { readonly ids: readonly string[]; readonly state: number } => {
+): { readonly ids: readonly T[]; readonly state: number } => {
   const output = [...ids];
   let state = initialState;
 
@@ -42,6 +42,11 @@ const shuffleIds = (
 
 const getTierCardIds = (tier: CardTier): readonly string[] =>
   DEVELOPMENT_CARDS.filter((card) => card.tier === tier).map((card) => card.id);
+
+export const shuffleWithSeed = <T>(
+  items: readonly T[],
+  seed: string,
+): readonly T[] => shuffleIds(items, hashSeed(seed)).ids;
 
 export const createShuffledSetup = (seed: string): ShuffledSetup => {
   const initialState = hashSeed(seed);

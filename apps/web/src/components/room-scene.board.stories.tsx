@@ -24,7 +24,7 @@ const replayEndRoom = createRoom(replayResult.state, {
 });
 
 const meta = {
-  title: 'Game/RoomScene/Board',
+  title: 'Game/Board',
   component: RoomScene,
   args: baseArgs,
   parameters: {
