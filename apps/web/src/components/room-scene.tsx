@@ -2157,7 +2157,7 @@ export const RoomScene = ({
       className="h-[100dvh] overflow-hidden bg-[radial-gradient(circle_at_top,_rgba(251,191,36,0.16),_transparent_22%),radial-gradient(circle_at_bottom_right,_rgba(56,189,248,0.14),_transparent_28%),linear-gradient(180deg,_#1e140f,_#090d15)] text-stone-100"
       style={animationCssVars}
     >
-      <div className="mx-auto flex h-full max-w-md flex-col gap-2 px-2 py-2">
+      <div className="mx-auto flex h-full max-w-md flex-col gap-2 overflow-hidden px-2 py-2">
         <header className="sticky top-0 z-30 rounded-[1rem] border border-white/10 bg-stone-950/90 px-2.5 py-2 shadow-[0_14px_36px_rgba(0,0,0,0.28)] backdrop-blur">
           <div className="flex items-center gap-2">
             <div className="min-w-0 flex-1">
@@ -2283,7 +2283,7 @@ export const RoomScene = ({
         {room ? (
           <>
             {game ? (
-              <div className="flex min-h-0 flex-1 flex-col gap-2">
+              <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-hidden">
                 {!(showGameComplete && game.status === 'finished') ? (
                   <section className="min-h-0 flex-1 overflow-hidden rounded-[1rem] border border-white/10 bg-stone-950/72 shadow-[0_14px_36px_rgba(0,0,0,0.24)]">
                     <div ref={playerSummaryContainerRef} className="h-full overflow-y-auto p-2">
