@@ -288,10 +288,11 @@ export const NobleTile = ({
 }: NobleTileProps) => {
   const isCompact = size === 'compact';
   const nobleImage = getNobleImageSrc(noble.id);
+  const cornerRadiusClass = isCompact ? 'rounded-[0.85rem]' : 'rounded-[1.15rem]';
 
   return (
     <button
-      className={`relative w-full ${isCompact ? 'aspect-square rounded-[0.85rem] p-2' : 'rounded-[1.15rem] p-4'} overflow-hidden border bg-stone-950 text-left text-emerald-50 shadow-lg transition ${
+      className={`relative w-full ${isCompact ? `aspect-square ${cornerRadiusClass} p-2` : `${cornerRadiusClass} p-4`} border bg-stone-950 text-left text-emerald-50 shadow-lg transition ${
         isSelected ? 'border-emerald-300/80 outline-2 outline-offset-2 outline-emerald-300/55' : 'border-emerald-200/20'
       } ${
         typeof onPress === 'function' ? 'active:scale-[0.99]' : ''
@@ -300,12 +301,14 @@ export const NobleTile = ({
       onClick={onPress}
       type="button"
     >
-      <img
-        alt=""
-        aria-hidden="true"
-        className="pointer-events-none absolute inset-0 h-full w-full object-cover"
-        src={nobleImage}
-      />
+      <div className={`pointer-events-none absolute inset-0 overflow-hidden ${cornerRadiusClass}`}>
+        <img
+          alt=""
+          aria-hidden="true"
+          className="h-full w-full object-cover"
+          src={nobleImage}
+        />
+      </div>
       <div className={`relative flex h-full flex-col ${isCompact ? '' : ''}`}>
         <p className={`relative font-serif text-emerald-50 drop-shadow-sm ${isCompact ? 'text-lg' : 'mt-2 text-2xl'}`}>{noble.points}</p>
         <div className={`relative mt-auto flex flex-wrap ${isCompact ? 'gap-1' : 'gap-2'}`}>
