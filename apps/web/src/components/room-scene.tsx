@@ -851,6 +851,9 @@ export const RoomScene = ({
       : sourceRoom?.status === 'in_progress'
         ? isSocketConnected && !isPresentingTransition
         : true;
+  // Allow UI interaction (opening modals, selecting cards) even during animations.
+  // Only actual move submission is gated by canSubmitRealtimeMoves.
+  const canOpenUI = replaySelection === null;
 
   useLayoutEffect(() => {
     setSelection(initialSelection);
@@ -1370,14 +1373,14 @@ export const RoomScene = ({
             className={`flex w-full items-center gap-2 rounded-[0.8rem] text-left transition ${
               selection?.type === 'bank' ? 'bg-white/5' : ''
             } ${
-              interaction.isCurrentUsersTurn && game.turn.kind === 'main-action' && canSubmitRealtimeMoves
+              interaction.isCurrentUsersTurn && game.turn.kind === 'main-action' && canOpenUI
                 ? 'active:scale-[0.995]'
                 : ''
             }`}
             disabled={
               !interaction.isCurrentUsersTurn ||
               game.turn.kind !== 'main-action' ||
-              !canSubmitRealtimeMoves
+              !canOpenUI
             }
             onClick={() => openBankSelection()}
             type="button"
@@ -1422,7 +1425,7 @@ export const RoomScene = ({
                         disabled={
                           !interaction.isCurrentUsersTurn ||
                           game.turn.kind !== 'main-action' ||
-                          !canSubmitRealtimeMoves
+                          !canOpenUI
                         }
                         isSelected={selection?.type === 'deck' && selection.tier === tier}
                         onPress={() => setSelection({ type: 'deck', tier })}
@@ -1444,7 +1447,7 @@ export const RoomScene = ({
                         ) : (
                           <SplendorCard
                             card={card}
-                            disabled={!canSubmitRealtimeMoves}
+                            disabled={!canOpenUI}
                             isSelected={selection?.type === 'market-card' && selection.cardId === card.id}
                             onPress={() => setSelection({ type: 'market-card', cardId: card.id })}
                             size="compact"
@@ -2028,7 +2031,7 @@ export const RoomScene = ({
                     <SplendorCard
                       key={`reserved-detail-${card.id}`}
                       card={card}
-                      disabled={!canSubmitRealtimeMoves}
+                      disabled={!canOpenUI}
                       onPress={() => setSelection({ type: 'reserved-card', cardId: card.id })}
                       size="tiny"
                     />
@@ -2167,7 +2170,7 @@ export const RoomScene = ({
               </div>
               <p className="truncate text-[12px] leading-4 text-stone-300">{currentTurnCopy}</p>
             </div>
-            {!canSubmitRealtimeMoves ? (
+            {sourceRoom?.status === 'in_progress' && !isSocketConnected ? (
               <span className="rounded-full border border-sky-300/20 bg-sky-300/8 px-2 py-1 text-[10px] uppercase tracking-[0.16em] text-sky-100">
                 Connecting
               </span>
