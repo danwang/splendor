@@ -52,6 +52,15 @@ const authenticateRequest = async (
 };
 
 export const registerRoomRoutes = (app: FastifyInstance): void => {
+  const toResponseRoom = (room: Awaited<ReturnType<typeof app.serverDependencies.roomStore.getRoom>> extends infer T
+    ? T extends null
+      ? never
+      : T
+    : never) => ({
+    ...toPublicRoomState(room),
+    connectedUserIds: app.getConnectedUserIds(room.id),
+  });
+
   app.get('/api/rooms', async () => {
     const rooms = await app.serverDependencies.roomStore.listRooms();
 
@@ -71,7 +80,7 @@ export const registerRoomRoutes = (app: FastifyInstance): void => {
         config: body,
       });
 
-      return reply.code(201).send({ room: toPublicRoomState(room) });
+      return reply.code(201).send({ room: toResponseRoom(room) });
     } catch (error) {
       return reply
         .code(401)
@@ -89,7 +98,7 @@ export const registerRoomRoutes = (app: FastifyInstance): void => {
         return reply.code(404).send({ error: 'Room not found.' });
       }
 
-      return { room: toPublicRoomState(room) };
+      return { room: toResponseRoom(room) };
     } catch (error) {
       return reply
         .code(401)
@@ -115,7 +124,7 @@ export const registerRoomRoutes = (app: FastifyInstance): void => {
 
       await app.serverDependencies.roomStore.updateRoom(joined.room);
       await app.broadcastRoomState(roomId);
-      return { room: toPublicRoomState(joined.room) };
+      return { room: toResponseRoom(joined.room) };
     } catch (error) {
       return reply
         .code(401)
@@ -141,7 +150,7 @@ export const registerRoomRoutes = (app: FastifyInstance): void => {
 
       await app.serverDependencies.roomStore.updateRoom(started.room);
       await app.broadcastRoomState(roomId);
-      return { room: toPublicRoomState(started.room) };
+      return { room: toResponseRoom(started.room) };
     } catch (error) {
       return reply
         .code(401)
@@ -168,7 +177,7 @@ export const registerRoomRoutes = (app: FastifyInstance): void => {
 
       await app.serverDependencies.roomStore.updateRoom(result.room);
       await app.broadcastRoomState(roomId);
-      return { room: toPublicRoomState(result.room) };
+      return { room: toResponseRoom(result.room) };
     } catch (error) {
       return reply
         .code(401)

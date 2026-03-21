@@ -190,18 +190,23 @@ describe('server app', () => {
       url: `/api/rooms/${roomId}/join`,
       headers: authHeader('guest'),
     });
-    await app.inject({
+    const started = await app.inject({
       method: 'POST',
       url: `/api/rooms/${roomId}/start`,
       headers: authHeader('host'),
     });
+    const hostSocket = createFakeSocket();
+    const guestSocket = createFakeSocket();
+    const activePlayerId = started.json().room.game.players[
+      started.json().room.game.turn.activePlayerIndex
+    ].identity.id as string;
+    const activeUser = activePlayerId === users.host!.id ? users.host! : users.guest!;
+    const activeSocket = activePlayerId === users.host!.id ? hostSocket.socket : guestSocket.socket;
 
     const roomConnections = new Map<
       string,
       Map<ReturnType<typeof createFakeSocket>['socket'], string>
     >();
-    const hostSocket = createFakeSocket();
-    const guestSocket = createFakeSocket();
     roomConnections.set(
       roomId,
       new Map([
@@ -214,12 +219,12 @@ describe('server app', () => {
       app,
       roomConnections,
       roomId,
-      users.host!,
+      activeUser,
       {
         type: 'take-distinct',
         colors: ['white', 'blue', 'green'],
       },
-      hostSocket.socket,
+      activeSocket,
     );
 
     const hostMessage = hostSocket.messages.at(-1);
@@ -239,6 +244,32 @@ describe('server app', () => {
       expect(hostMessage.room.game?.turn.kind).toBe('main-action');
       expect(hostMessage.room.game?.turn.activePlayerIndex).toBe(1);
     }
+  });
+
+  it('returns connected users in room fetches', async () => {
+    const app = await createApp({ dependencies: { verifyAccessToken } });
+
+    apps.push(app);
+
+    const created = await app.inject({
+      method: 'POST',
+      url: '/api/rooms',
+      headers: authHeader('host'),
+      payload: { seatCount: 2, targetScore: 15 },
+    });
+    const roomId = created.json().room.id as string;
+
+    app.getConnectedUserIds = (requestedRoomId: string) =>
+      requestedRoomId === roomId ? [users.host!.id, users.guest!.id] : [];
+
+    const response = await app.inject({
+      method: 'GET',
+      url: `/api/rooms/${roomId}`,
+      headers: authHeader('host'),
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json().room.connectedUserIds).toEqual([users.host!.id, users.guest!.id]);
   });
 
   it('accepts guest bearer tokens when using the guest verifier', async () => {

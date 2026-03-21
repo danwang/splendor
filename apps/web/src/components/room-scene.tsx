@@ -434,7 +434,7 @@ const ChipStrip = ({
           highlightedColors.includes(color) ? 'receive-bulge' : ''
         }`}
       >
-        <GemPip color={color} count={counts[color]} size="sm" />
+        <GemPip color={color} count={counts[color]} size="summary" />
       </span>
     ))}
   </div>
@@ -451,7 +451,7 @@ const TableauStrip = ({
     {tokenColorOrder.map((color) => (
       <span
         key={`tableau-${color}`}
-        className={`inline-flex min-w-7 items-center justify-center rounded-[0.45rem] border px-1.5 py-1 text-[10px] font-bold shadow-sm ${
+        className={`inline-flex h-7 w-7 items-center justify-center rounded-[0.45rem] border text-[10px] font-bold leading-none shadow-sm ${
           tableauBadgeStyles[color]
         } ${counts[color] > 0 ? '' : 'opacity-35'} ${
           highlightedColors.includes(color) ? 'receive-bulge receive-bulge-delay' : ''
@@ -474,7 +474,7 @@ const ReservedMarkers = ({
     {tiers.map((tier, index) => (
       <span
         key={`reserved-marker-${index}`}
-        className={`relative h-6 w-4 rounded-[0.4rem] border bg-linear-to-br shadow-sm ${
+        className={`relative h-5 w-3.5 rounded-[0.35rem] border bg-linear-to-br shadow-sm ${
           reservedMarkerStyles[tier - 1]
         } ${isHighlighted ? 'receive-bulge receive-bulge-delay' : ''}`}
       >
@@ -509,7 +509,7 @@ const NobleMarkers = ({ nobleIds }: { readonly nobleIds: readonly string[] }) =>
     {nobleIds.map((nobleId) => (
       <span
         key={`claimed-noble-${nobleId}`}
-        className="relative h-7 w-7 overflow-hidden rounded-[0.5rem] border border-emerald-200/30 bg-stone-950 shadow-sm"
+        className="relative h-6 w-6 overflow-hidden rounded-[0.45rem] border border-emerald-200/30 bg-stone-950 shadow-sm"
       >
         <img
           alt=""
@@ -532,6 +532,7 @@ const PlayerSummaryRow = ({
   sourceChipBulges,
   onPress,
   player,
+  rowRef,
   room,
   reservedTargetRef,
   tableauTargetRef,
@@ -546,6 +547,7 @@ const PlayerSummaryRow = ({
   readonly sourceChipBulges: readonly GemColor[];
   readonly onPress: () => void;
   readonly player: PlayerSummaryModel;
+  readonly rowRef?: (node: HTMLButtonElement | null) => void;
   readonly room: PublicRoomState;
   readonly reservedTargetRef?: (node: HTMLDivElement | null) => void;
   readonly tableauTargetRef?: (node: HTMLDivElement | null) => void;
@@ -561,7 +563,8 @@ const PlayerSummaryRow = ({
 
   return (
     <button
-      className={`relative w-full overflow-hidden rounded-[1rem] border px-2.5 py-2 text-left ${
+      ref={rowRef}
+      className={`relative w-full overflow-hidden rounded-[1rem] border px-2.5 py-1.5 text-left ${
         isActive && isCurrentUser
           ? 'border-amber-300/45 bg-amber-300/10'
           : isWaitingOnOpponent
@@ -597,7 +600,7 @@ const PlayerSummaryRow = ({
         <div className="text-right">
           <p className="text-[9px] uppercase tracking-[0.18em] text-stone-500">VP</p>
           <p
-            className={`text-lg leading-none font-semibold text-amber-50 ${
+            className={`text-[1.05rem] leading-none font-semibold text-amber-50 ${
               playerAnimation.scoreChanged ? 'score-flip' : ''
             }`}
           >
@@ -606,27 +609,34 @@ const PlayerSummaryRow = ({
         </div>
       </div>
 
-      <div className="mt-1.5 grid grid-cols-[4.5rem_minmax(0,1fr)] items-center gap-x-2 gap-y-1">
+      <div className="mt-1 grid grid-cols-[3.9rem_minmax(0,1fr)] items-center gap-x-2 gap-y-1">
         <p className="whitespace-nowrap text-[9px] uppercase tracking-[0.18em] text-stone-500">
           Cards ({totalTableauCards})
         </p>
-        <div className="flex min-w-0 items-center gap-3">
-          <div ref={tableauTargetRef}>
+        <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-2">
+          <div ref={tableauTargetRef} className="min-w-0">
             <TableauStrip
               counts={player.tableauBonuses}
               highlightedColors={playerAnimation.changedTableauColors}
             />
           </div>
-          <div ref={reservedTargetRef}>
-            <ReservedMarkers
-              isHighlighted={playerAnimation.reservedChanged}
-              tiers={player.reservedTiers}
-            />
+          <div className="flex items-center gap-2 justify-self-end">
+            <div ref={reservedTargetRef}>
+              <ReservedMarkers
+                isHighlighted={playerAnimation.reservedChanged}
+                tiers={player.reservedTiers}
+              />
+            </div>
+            {player.nobleIds.length > 0 ? (
+              <div className="min-w-0">
+                <NobleMarkers nobleIds={player.nobleIds} />
+              </div>
+            ) : null}
           </div>
         </div>
       </div>
 
-      <div className="mt-1 grid grid-cols-[4.5rem_minmax(0,1fr)] items-center gap-x-2 gap-y-1">
+      <div className="mt-0.75 grid grid-cols-[3.9rem_minmax(0,1fr)] items-center gap-x-2 gap-y-1">
         <p className="whitespace-nowrap text-[9px] uppercase tracking-[0.18em] text-stone-500">
           Chips ({totalChips})
         </p>
@@ -639,21 +649,10 @@ const PlayerSummaryRow = ({
           />
         </div>
       </div>
-
-      {player.nobleIds.length > 0 ? (
-        <div className="mt-1 grid grid-cols-[4.5rem_minmax(0,1fr)] items-center gap-x-2 gap-y-1">
-          <p className="whitespace-nowrap text-[9px] uppercase tracking-[0.18em] text-stone-500">
-            Nobles ({player.nobleIds.length})
-          </p>
-          <div className="min-w-0">
-            <NobleMarkers nobleIds={player.nobleIds} />
-          </div>
-        </div>
-      ) : null}
       <div
         ref={nobleTargetRef}
         aria-hidden="true"
-        className="pointer-events-none absolute right-2.5 bottom-2.5 h-7 w-7 opacity-0"
+        className="pointer-events-none absolute right-2.25 bottom-2 h-6 w-6 opacity-0"
       />
     </button>
   );
@@ -722,6 +721,8 @@ export const RoomScene = ({
     initialResultsVisible ?? sourceRoom?.game?.status === 'finished',
   );
   const [replaySelection, setReplaySelection] = useState<ReplaySelection | null>(null);
+  const playerSummaryContainerRef = useRef<HTMLDivElement | null>(null);
+  const playerSummaryRowRefs = useRef<Partial<Record<string, HTMLButtonElement | null>>>({});
   const targetNodeRefs = useRef<Partial<Record<string, HTMLElement | null>>>({});
   const overlayRectCacheRef = useRef<{
     readonly planId: string | null;
@@ -881,6 +882,26 @@ export const RoomScene = ({
       setShowGameComplete(true);
     }
   }, [isPresentingTransition, sourceRoom?.game?.status]);
+
+  useEffect(() => {
+    const activePlayerId = game?.players[game.turn.activePlayerIndex]?.identity.id;
+
+    if (!activePlayerId || replaySelection !== null) {
+      return;
+    }
+
+    const rowNode = playerSummaryRowRefs.current[activePlayerId];
+
+    if (!rowNode) {
+      return;
+    }
+
+    rowNode.scrollIntoView({
+      behavior: 'smooth',
+      block: 'nearest',
+      inline: 'nearest',
+    });
+  }, [game?.turn.activePlayerIndex, game?.turn.kind, game?.turn.round, replaySelection]);
 
   useEffect(() => {
     if (
@@ -2022,10 +2043,10 @@ export const RoomScene = ({
 
   return (
     <main
-      className="min-h-screen bg-[radial-gradient(circle_at_top,_rgba(251,191,36,0.16),_transparent_22%),radial-gradient(circle_at_bottom_right,_rgba(56,189,248,0.14),_transparent_28%),linear-gradient(180deg,_#1e140f,_#090d15)] pb-28 text-stone-100"
+      className="h-[100dvh] overflow-hidden bg-[radial-gradient(circle_at_top,_rgba(251,191,36,0.16),_transparent_22%),radial-gradient(circle_at_bottom_right,_rgba(56,189,248,0.14),_transparent_28%),linear-gradient(180deg,_#1e140f,_#090d15)] text-stone-100"
       style={animationCssVars}
     >
-      <div className="mx-auto flex max-w-md flex-col gap-2 px-2 py-2">
+      <div className="mx-auto flex h-full max-w-md flex-col gap-2 px-2 py-2">
         <header className="sticky top-0 z-30 rounded-[1rem] border border-white/10 bg-stone-950/90 px-2.5 py-2 shadow-[0_14px_36px_rgba(0,0,0,0.28)] backdrop-blur">
           <div className="flex items-center gap-2">
             <div className="min-w-0 flex-1">
@@ -2143,47 +2164,91 @@ export const RoomScene = ({
 
         {room ? (
           <>
-            {game && !(showGameComplete && game.status === 'finished') ? (
-              <section className="rounded-[1rem] border border-white/10 bg-stone-950/72 p-2 shadow-[0_14px_36px_rgba(0,0,0,0.24)]">
-                <div className="space-y-1.5">
-                  {playerSummaries.map((player) => (
-                    <PlayerSummaryRow
-                      chipTargetRefByColor={gemOrder.reduce<
-                        Partial<Record<GemColor, (node: HTMLSpanElement | null) => void>>
-                      >((result, color) => {
-                        return {
-                          ...result,
-                          [color]: (node: HTMLSpanElement | null) => {
-                            targetNodeRefs.current[animationTargets.playerChip(player.id, color)] = node;
-                          },
-                        };
-                      }, {})}
-                      key={`summary-${player.id}`}
-                      currentUserId={currentUserId}
-                      isRecentlyUpdated={animationState.changedPlayerIds.includes(player.id)}
-                      nobleTargetRef={(node) => {
-                        targetNodeRefs.current[animationTargets.playerNobles(player.id)] = node;
-                      }}
-                      playerAnimation={playerAnimations[player.id] ?? emptyPlayerReceiveAnimation}
-                      sourceChipBulges={sourceChipBulges.playerColorsById[player.id] ?? []}
-                      onPress={() => {
-                        if (game) {
-                          setSelection({ type: 'player', playerId: player.id });
-                        }
-                      }}
-                      player={player}
-                      room={room}
-                      reservedTargetRef={(node) => {
-                        targetNodeRefs.current[animationTargets.playerReserved(player.id)] = node;
-                      }}
-                      tableauTargetRef={(node) => {
-                        targetNodeRefs.current[animationTargets.playerTableau(player.id)] = node;
-                      }}
-                    />
-                  ))}
-                </div>
-              </section>
-            ) : !game ? (
+            {game ? (
+              <div className="flex min-h-0 flex-1 flex-col gap-2">
+                {!(showGameComplete && game.status === 'finished') ? (
+                  <section className="min-h-0 flex-1 overflow-hidden rounded-[1rem] border border-white/10 bg-stone-950/72 shadow-[0_14px_36px_rgba(0,0,0,0.24)]">
+                    <div ref={playerSummaryContainerRef} className="h-full overflow-y-auto p-2">
+                      <div className="space-y-1.5">
+                        {playerSummaries.map((player) => (
+                          <PlayerSummaryRow
+                            chipTargetRefByColor={gemOrder.reduce<
+                              Partial<Record<GemColor, (node: HTMLSpanElement | null) => void>>
+                            >((result, color) => {
+                              return {
+                                ...result,
+                                [color]: (node: HTMLSpanElement | null) => {
+                                  targetNodeRefs.current[animationTargets.playerChip(player.id, color)] = node;
+                                },
+                              };
+                            }, {})}
+                            key={`summary-${player.id}`}
+                            currentUserId={currentUserId}
+                            isRecentlyUpdated={animationState.changedPlayerIds.includes(player.id)}
+                            nobleTargetRef={(node) => {
+                              targetNodeRefs.current[animationTargets.playerNobles(player.id)] = node;
+                            }}
+                            playerAnimation={playerAnimations[player.id] ?? emptyPlayerReceiveAnimation}
+                            sourceChipBulges={sourceChipBulges.playerColorsById[player.id] ?? []}
+                            onPress={() => {
+                              if (game) {
+                                setSelection({ type: 'player', playerId: player.id });
+                              }
+                            }}
+                            player={player}
+                            rowRef={(node) => {
+                              playerSummaryRowRefs.current[player.id] = node;
+                            }}
+                            room={room}
+                            reservedTargetRef={(node) => {
+                              targetNodeRefs.current[animationTargets.playerReserved(player.id)] = node;
+                            }}
+                            tableauTargetRef={(node) => {
+                              targetNodeRefs.current[animationTargets.playerTableau(player.id)] = node;
+                            }}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  </section>
+                ) : null}
+
+                {game && showGameComplete && game.status === 'finished' ? (
+                  <GameCompleteScreen
+                    game={game}
+                    onViewBoard={() => setShowGameComplete(false)}
+                    playerSummaries={playerSummaries}
+                  />
+                ) : (
+                  <div className="shrink-0 space-y-2">
+                    <section className="rounded-[1rem] border border-white/10 bg-stone-950/72 p-1.5 shadow-[0_14px_36px_rgba(0,0,0,0.24)]">
+                      <div className="grid grid-cols-3 gap-1">
+                        {(['board', 'nobles', 'log'] as const).map((panel) => (
+                          <button
+                            key={`panel-${panel}`}
+                            className={`${panelToggleButtonClass} ${
+                              activePanel === panel
+                                ? 'bg-amber-300 text-stone-950'
+                                : 'bg-white/4 text-stone-300 hover:bg-white/8'
+                            }`}
+                            onClick={() => setActivePanel(panel)}
+                            type="button"
+                          >
+                            {panel === 'board' ? 'Board' : panel === 'nobles' ? 'Nobles' : 'Log'}
+                          </button>
+                        ))}
+                      </div>
+                    </section>
+
+                    {activePanel === 'board'
+                      ? renderBoardPanel()
+                      : activePanel === 'nobles'
+                        ? renderNoblesPanel()
+                        : renderLogPanel()}
+                  </div>
+                )}
+              </div>
+            ) : (
               <section className="rounded-[1rem] border border-white/10 bg-stone-950/72 p-3 shadow-[0_14px_36px_rgba(0,0,0,0.24)]">
                 <div className="space-y-2">
                   {room.participants.map((participant) => (
@@ -2214,45 +2279,6 @@ export const RoomScene = ({
                     </div>
                   ))}
                 </div>
-              </section>
-            ) : null}
-
-            {game && showGameComplete && game.status === 'finished' ? (
-              <GameCompleteScreen
-                game={game}
-                onViewBoard={() => setShowGameComplete(false)}
-                playerSummaries={playerSummaries}
-              />
-            ) : game ? (
-              <>
-                <section className="rounded-[1rem] border border-white/10 bg-stone-950/72 p-1.5 shadow-[0_14px_36px_rgba(0,0,0,0.24)]">
-                  <div className="grid grid-cols-3 gap-1">
-                    {(['board', 'nobles', 'log'] as const).map((panel) => (
-                      <button
-                        key={`panel-${panel}`}
-                        className={`${panelToggleButtonClass} ${
-                          activePanel === panel
-                            ? 'bg-amber-300 text-stone-950'
-                            : 'bg-white/4 text-stone-300 hover:bg-white/8'
-                        }`}
-                        onClick={() => setActivePanel(panel)}
-                        type="button"
-                      >
-                        {panel === 'board' ? 'Board' : panel === 'nobles' ? 'Nobles' : 'Log'}
-                      </button>
-                    ))}
-                  </div>
-                </section>
-
-                {activePanel === 'board'
-                  ? renderBoardPanel()
-                  : activePanel === 'nobles'
-                    ? renderNoblesPanel()
-                    : renderLogPanel()}
-              </>
-            ) : (
-              <section className="rounded-[1rem] border border-white/10 bg-stone-950/72 p-3 text-sm text-stone-300 shadow-[0_14px_36px_rgba(0,0,0,0.24)]">
-                Waiting for the host to start the match.
               </section>
             )}
           </>

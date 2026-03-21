@@ -87,7 +87,7 @@ const circleClass = (color: GemColor): string =>
 export interface GemPipProps {
   readonly color: GemColor;
   readonly count?: number;
-  readonly size?: 'xs' | 'sm' | 'md';
+  readonly size?: 'xs' | 'sm' | 'summary' | 'md';
 }
 
 const GemIcon = ({
@@ -103,6 +103,8 @@ const GemIcon = ({
         ? 'h-4 w-4'
         : size === 'sm'
           ? 'h-5 w-5'
+          : size === 'summary'
+            ? 'h-5 w-5'
           : 'h-6 w-6'
     }`}
   >
@@ -121,6 +123,8 @@ export const GemPip = ({ color, count, size = 'md' }: GemPipProps) => {
             ? 'h-5 w-5'
             : size === 'sm'
               ? 'h-7 w-7'
+              : size === 'summary'
+                ? 'h-7 w-7'
               : 'h-9 w-9'
         }`}
       >
@@ -136,6 +140,8 @@ export const GemPip = ({ color, count, size = 'md' }: GemPipProps) => {
           ? 'h-5 min-w-5 px-1 text-[10px]'
           : size === 'sm'
             ? 'h-7 min-w-7 px-2 text-[11px]'
+            : size === 'summary'
+              ? 'h-7 w-7 text-[10px]'
             : 'h-9 min-w-9 px-2.5 text-sm'
       } font-bold shadow-sm`}
     >

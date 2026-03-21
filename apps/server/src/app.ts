@@ -17,6 +17,7 @@ import { type ServerDependencies } from './types.js';
 declare module 'fastify' {
   interface FastifyInstance {
     broadcastRoomState: (roomId: string) => Promise<void>;
+    getConnectedUserIds: (roomId: string) => readonly string[];
     serverDependencies: ServerDependencies;
   }
 }
@@ -56,6 +57,8 @@ export const createApp = async (
 
     broadcastRoomState(connections, roomId, room);
   };
+  app.getConnectedUserIds = (roomId: string): readonly string[] =>
+    [...new Set([...(connections.get(roomId)?.values() ?? [])])];
 
   app.addHook('onClose', async () => {
     await app.serverDependencies.roomStore.close?.();
