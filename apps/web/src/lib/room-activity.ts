@@ -29,6 +29,25 @@ const emptyAnimationState: RoomAnimationState = {
 const totalTokens = (tokens: GameState['bank']): number =>
   gemOrder.reduce((sum, color) => sum + tokens[color], 0);
 
+const describeChipDelta = (
+  previousTokens: GameState['bank'],
+  nextTokens: GameState['bank'],
+  direction: 'gain' | 'loss',
+): string => {
+  const parts = gemOrder.flatMap((color) => {
+    const delta = nextTokens[color] - previousTokens[color];
+    const normalizedDelta = direction === 'gain' ? delta : -delta;
+
+    if (normalizedDelta <= 0) {
+      return [];
+    }
+
+    return [`${normalizedDelta} ${color}`];
+  });
+
+  return parts.join(' • ');
+};
+
 const playerScore = (player: GameState['players'][number]): number =>
   player.purchasedCards.reduce((sum, card) => sum + card.points, 0) +
   player.nobles.reduce((sum, noble) => sum + noble.points, 0);
@@ -187,11 +206,13 @@ export const deriveRoomActivityEntries = (
       nextActor.reservedCards.length > previousActor.reservedCards.length;
 
     if (previousGame.turn.kind === 'main-action' && tokenDelta > 0 && !boughtCard) {
+      const chipsTaken = describeChipDelta(previousActor.tokens, nextActor.tokens, 'gain');
+
       pushEntry(
         entries,
         previousRoom,
         nextRoom,
-        `${previousActor.identity.displayName} took ${tokenDelta} chip${tokenDelta === 1 ? '' : 's'}.`,
+        `${previousActor.identity.displayName} took ${chipsTaken}.`,
         'sky',
       );
     }
