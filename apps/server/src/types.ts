@@ -25,6 +25,7 @@ export interface RoomRecord {
   readonly participants: readonly RoomParticipant[];
   readonly stateVersion: number;
   readonly game: GameState | null;
+  readonly history: readonly PublicRoomState[];
   readonly updatedAt: number;
 }
 
@@ -59,6 +60,7 @@ export type ServerMessage =
   | {
       readonly type: 'room-state';
       readonly room: PublicRoomState;
+      readonly roomHistory: readonly PublicRoomState[];
     }
   | {
       readonly type: 'error';

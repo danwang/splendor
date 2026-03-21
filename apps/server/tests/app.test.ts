@@ -76,6 +76,7 @@ describe('server app', () => {
     expect(response.statusCode).toBe(201);
     expect(response.json().room.config.targetScore).toBe(21);
     expect(response.json().room.participants).toHaveLength(1);
+    expect(response.json().roomHistory.map((entry: { readonly stateVersion: number }) => entry.stateVersion)).toEqual([0]);
   });
 
   it('lists discoverable rooms without requiring authentication', async () => {
@@ -241,6 +242,8 @@ describe('server app', () => {
     if (hostMessage.type === 'room-state' && guestMessage.type === 'room-state') {
       expect(hostMessage.room.stateVersion).toBe(3);
       expect(guestMessage.room.stateVersion).toBe(3);
+      expect(hostMessage.roomHistory.map((entry) => entry.stateVersion)).toEqual([0, 1, 2, 3]);
+      expect(guestMessage.roomHistory.map((entry) => entry.stateVersion)).toEqual([0, 1, 2, 3]);
       expect(hostMessage.room.game?.turn.kind).toBe('main-action');
       expect(hostMessage.room.game?.turn.activePlayerIndex).toBe(1);
     }
@@ -270,6 +273,67 @@ describe('server app', () => {
 
     expect(response.statusCode).toBe(200);
     expect(response.json().room.connectedUserIds).toEqual([users.host!.id, users.guest!.id]);
+  });
+
+  it('returns full room history when reloading after state changes', async () => {
+    const app = await createApp({
+      dependencies: {
+        verifyAccessToken,
+        makeSeed: () => 'server-history-seed',
+      },
+    });
+
+    apps.push(app);
+
+    const created = await app.inject({
+      method: 'POST',
+      url: '/api/rooms',
+      headers: authHeader('host'),
+      payload: { seatCount: 2, targetScore: 15 },
+    });
+    const roomId = created.json().room.id as string;
+
+    await app.inject({
+      method: 'POST',
+      url: `/api/rooms/${roomId}/join`,
+      headers: authHeader('guest'),
+    });
+    const started = await app.inject({
+      method: 'POST',
+      url: `/api/rooms/${roomId}/start`,
+      headers: authHeader('host'),
+    });
+    const activePlayerId = started.json().room.game.players[
+      started.json().room.game.turn.activePlayerIndex
+    ].identity.id as string;
+    const activeToken = activePlayerId === users.host!.id ? 'host' : 'guest';
+
+    await submitRoomMoveFromSocket(
+      app,
+      new Map(),
+      roomId,
+      users[activeToken]!,
+      {
+        type: 'take-distinct',
+        colors: ['white', 'blue', 'green'],
+      },
+      createFakeSocket().socket,
+    );
+
+    const response = await app.inject({
+      method: 'GET',
+      url: `/api/rooms/${roomId}`,
+      headers: authHeader('host'),
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json().room.stateVersion).toBe(3);
+    expect(response.json().roomHistory.map((entry: { readonly stateVersion: number }) => entry.stateVersion)).toEqual([
+      0,
+      1,
+      2,
+      3,
+    ]);
   });
 
   it('accepts guest bearer tokens when using the guest verifier', async () => {

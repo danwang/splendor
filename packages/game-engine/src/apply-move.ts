@@ -204,6 +204,10 @@ export const reduceGame = (state: GameState, move: Move): ReduceGameResult => {
     return advanceTurn(
       {
         ...state,
+        bank: move.tokens.reduce(
+          (bank, color) => addTokenCounts(bank, { [color]: 1 }),
+          state.bank,
+        ),
         turn: {
           kind: 'main-action',
           activePlayerIndex,

@@ -70,6 +70,16 @@ describe('engine scenarios', () => {
             red: 1,
           }),
         );
+        expect(discardResult.state.bank).toEqual(
+          createTokenMap({
+            white: 3,
+            blue: 3,
+            green: 3,
+            red: 5,
+            black: 5,
+            gold: 5,
+          }),
+        );
         expect(discardResult.state.turn.kind).toBe('main-action');
         expect(discardResult.state.turn.activePlayerIndex).toBe(1);
       }
@@ -118,6 +128,16 @@ describe('engine scenarios', () => {
             blue: 1,
             green: 2,
             red: 2,
+          }),
+        );
+        expect(discardResult.state.bank).toEqual(
+          createTokenMap({
+            white: 2,
+            blue: 5,
+            green: 4,
+            red: 4,
+            black: 5,
+            gold: 5,
           }),
         );
         expect(discardResult.state.turn.kind).toBe('main-action');
@@ -182,6 +202,17 @@ describe('engine scenarios', () => {
     if (!discardReserveResult.ok) {
       return;
     }
+
+    expect(discardReserveResult.state.bank).toEqual(
+      createTokenMap({
+        white: 4,
+        blue: 4,
+        green: 4,
+        red: 4,
+        black: 5,
+        gold: 4,
+      }),
+    );
 
     const repointedTurnState: GameState = {
       ...discardReserveResult.state,

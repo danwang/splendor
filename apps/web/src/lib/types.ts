@@ -21,6 +21,11 @@ export interface PublicRoomState {
   readonly status: 'waiting' | 'in_progress' | 'finished';
 }
 
+export interface RoomStatePayload {
+  readonly room: PublicRoomState;
+  readonly roomHistory: readonly PublicRoomState[];
+}
+
 export interface PublicRoomSummary {
   readonly id: string;
   readonly config: RoomConfig;
@@ -36,6 +41,7 @@ export type ServerMessage =
   | {
       readonly type: 'room-state';
       readonly room: PublicRoomState;
+      readonly roomHistory: readonly PublicRoomState[];
     }
   | {
       readonly type: 'error';

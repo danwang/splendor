@@ -100,9 +100,9 @@ export const LobbyPage = () => {
       setIsSubmitting(true);
       setErrorMessage(null);
       const token = await getAccessTokenSilently();
-      const room = await createRoom(token, roomConfig);
+      const payload = await createRoom(token, roomConfig);
 
-      navigate(`/rooms/${room.id}`);
+      navigate(`/rooms/${payload.room.id}`);
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : 'Failed to create room.');
     } finally {

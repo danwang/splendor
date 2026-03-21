@@ -82,4 +82,36 @@ describe('in-memory room store cleanup', () => {
 
     await store.close?.();
   });
+
+  it('keeps a full state-version history when a room is updated', async () => {
+    const store = createInMemoryRoomStore();
+
+    const createdRoom = await store.createRoom({
+      host,
+      config: { seatCount: 2, targetScore: 15 },
+    });
+
+    expect(createdRoom.history.map((entry) => entry.stateVersion)).toEqual([0]);
+
+    const joinedRoom: RoomRecord = {
+      ...createdRoom,
+      participants: [
+        ...createdRoom.participants,
+        {
+          userId: 'guest-user',
+          displayName: 'Guest User',
+        },
+      ],
+      stateVersion: 1,
+    };
+
+    await store.updateRoom(joinedRoom);
+
+    const persistedRoom = await store.getRoom(createdRoom.id);
+
+    expect(persistedRoom?.history.map((entry) => entry.stateVersion)).toEqual([0, 1]);
+    expect(persistedRoom?.history[1]?.participants).toHaveLength(2);
+
+    await store.close?.();
+  });
 });

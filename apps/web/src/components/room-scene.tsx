@@ -81,7 +81,7 @@ interface SourceChipBulges {
 interface ReplaySelection {
   readonly afterStateVersion: number;
   readonly beforeStateVersion: number;
-  readonly entryId: string;
+  readonly entryId: string | null;
   readonly nonce: number;
 }
 
@@ -1078,15 +1078,25 @@ export const RoomScene = ({
     [activityEntries, roomHistoryByVersion],
   );
   const replayEntry = replaySelection
-    ? replayableEntries.find((entry) => entry.id === replaySelection.entryId) ?? null
+    ? replaySelection.entryId === null
+      ? null
+      : replayableEntries.find((entry) => entry.id === replaySelection.entryId) ?? null
     : null;
+  const isInitialReplayState =
+    replaySelection !== null &&
+    replaySelection.entryId === null &&
+    replaySelection.beforeStateVersion === replaySelection.afterStateVersion;
   const replayIndex = replayEntry
     ? replayableEntries.findIndex((entry) => entry.id === replayEntry.id)
     : -1;
-  const previousReplayEntry =
-    replayIndex > 0 ? replayableEntries[replayIndex - 1] ?? null : null;
-  const nextReplayEntry =
-    replayIndex >= 0 && replayIndex < replayableEntries.length - 1
+  const previousReplayEntry = isInitialReplayState
+    ? null
+    : replayIndex > 0
+      ? replayableEntries[replayIndex - 1] ?? null
+      : null;
+  const nextReplayEntry = isInitialReplayState
+    ? replayableEntries[0] ?? null
+    : replayIndex >= 0 && replayIndex < replayableEntries.length - 1
       ? replayableEntries[replayIndex + 1] ?? null
       : null;
   const latestReplayEntry =
@@ -1323,6 +1333,28 @@ export const RoomScene = ({
   const stopReplay = () => {
     setIsReplayPlaying(false);
     setReplaySelection(null);
+  };
+
+  const selectInitialReplayState = () => {
+    const initialRoom = normalizedRoomHistory[0];
+
+    if (!initialRoom) {
+      return;
+    }
+
+    setIsReplayPlaying(false);
+    setSelection(null);
+    setBankSelection([]);
+    setDiscardSelection([]);
+    setPurchaseSelection(createEmptyPaymentSelection());
+    setShowGameComplete(false);
+    setActivePanel('board');
+    setReplaySelection({
+      afterStateVersion: initialRoom.stateVersion,
+      beforeStateVersion: initialRoom.stateVersion,
+      entryId: null,
+      nonce: 0,
+    });
   };
 
   const renderBoardPanel = () => {
@@ -2156,26 +2188,20 @@ export const RoomScene = ({
               </button>
             ) : null}
           </div>
-          {replaySelection && replayEntry ? (
+          {replaySelection ? (
             <div className="mt-2 flex items-center gap-2 rounded-[0.9rem] border border-sky-300/18 bg-sky-300/8 px-2 py-2">
               <div className="min-w-0 flex-1">
                 <p className="text-[9px] uppercase tracking-[0.16em] text-sky-200/80">Replay</p>
                 <p className="truncate text-[11px] text-sky-50">
-                  {replayIndex + 1} / {replayableEntries.length}
+                  {isInitialReplayState ? 'Initial board' : `${replayIndex + 1} / ${replayableEntries.length}`}
                   {liveAdvancedWhileReplaying && sourceRoom ? ` • Live v${sourceRoom.stateVersion}` : ''}
                 </p>
               </div>
               <div className="flex items-center gap-1">
                 <ReplayIconButton
-                  disabled={replayIndex <= 0}
+                  disabled={isInitialReplayState}
                   label="Rewind to beginning"
-                  onClick={() => {
-                    const firstReplayEntry = replayableEntries[0];
-
-                    if (firstReplayEntry) {
-                      selectReplayEntry(firstReplayEntry);
-                    }
-                  }}
+                  onClick={selectInitialReplayState}
                 >
                   <ChevronFirst aria-hidden="true" className="h-4 w-4" />
                 </ReplayIconButton>

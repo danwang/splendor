@@ -24,6 +24,14 @@ export const toPublicRoomState = (room: RoomRecord): PublicRoomState => ({
   status: room.game ? room.game.status : 'waiting',
 });
 
+export const withConnectedUserIds = (
+  room: PublicRoomState,
+  connectedUserIds: readonly string[],
+): PublicRoomState => ({
+  ...room,
+  connectedUserIds,
+});
+
 export const toPublicRoomSummary = (room: RoomRecord): PublicRoomSummary => ({
   id: room.id,
   config: room.config,

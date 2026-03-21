@@ -1,5 +1,5 @@
 import { readWebConfig } from './config.js';
-import { type PublicRoomState, type PublicRoomSummary, type RoomConfig } from './types.js';
+import { type PublicRoomSummary, type RoomConfig, type RoomStatePayload } from './types.js';
 
 const config = readWebConfig();
 
@@ -36,13 +36,11 @@ const requestJson = async <T>(
 export const createRoom = async (
   token: string,
   roomConfig: RoomConfig,
-): Promise<PublicRoomState> => {
-  const payload = await requestJson<{ readonly room: PublicRoomState }>('/api/rooms', token, {
+): Promise<RoomStatePayload> => {
+  return requestJson<RoomStatePayload>('/api/rooms', token, {
     method: 'POST',
     body: JSON.stringify(roomConfig),
   });
-
-  return payload.room;
 };
 
 export const listRooms = async (): Promise<readonly PublicRoomSummary[]> => {
@@ -60,45 +58,39 @@ export const listRooms = async (): Promise<readonly PublicRoomSummary[]> => {
   return payload.rooms;
 };
 
-export const loadRoom = async (token: string, roomId: string): Promise<PublicRoomState> => {
-  const payload = await requestJson<{ readonly room: PublicRoomState }>(
+export const loadRoom = async (token: string, roomId: string): Promise<RoomStatePayload> => {
+  return requestJson<RoomStatePayload>(
     `/api/rooms/${roomId}`,
     token,
   );
-
-  return payload.room;
 };
 
-export const joinRoom = async (token: string, roomId: string): Promise<PublicRoomState> => {
-  const payload = await requestJson<{ readonly room: PublicRoomState }>(
+export const joinRoom = async (token: string, roomId: string): Promise<RoomStatePayload> => {
+  return requestJson<RoomStatePayload>(
     `/api/rooms/${roomId}/join`,
     token,
     {
       method: 'POST',
     },
   );
-
-  return payload.room;
 };
 
-export const startRoom = async (token: string, roomId: string): Promise<PublicRoomState> => {
-  const payload = await requestJson<{ readonly room: PublicRoomState }>(
+export const startRoom = async (token: string, roomId: string): Promise<RoomStatePayload> => {
+  return requestJson<RoomStatePayload>(
     `/api/rooms/${roomId}/start`,
     token,
     {
       method: 'POST',
     },
   );
-
-  return payload.room;
 };
 
 export const bootRoomParticipant = async (
   token: string,
   roomId: string,
   userId: string,
-): Promise<PublicRoomState> => {
-  const payload = await requestJson<{ readonly room: PublicRoomState }>(
+): Promise<RoomStatePayload> => {
+  return requestJson<RoomStatePayload>(
     `/api/rooms/${roomId}/boot`,
     token,
     {
@@ -106,6 +98,4 @@ export const bootRoomParticipant = async (
       body: JSON.stringify({ userId }),
     },
   );
-
-  return payload.room;
 };

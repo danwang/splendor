@@ -1,6 +1,6 @@
 import { randomInt } from 'node:crypto';
 
-import { type CreateRoomInput, type RoomRecord, type RoomStore } from '../types.js';
+import { type CreateRoomInput, type PublicRoomState, type RoomRecord, type RoomStore } from '../types.js';
 
 export interface InMemoryRoomStoreOptions {
   readonly cleanupIntervalMs?: number;
@@ -17,6 +17,27 @@ const defaultFinishedRoomTtlMs = 6 * 60 * 60 * 1000;
 
 const getRoomStatus = (room: RoomRecord): 'waiting' | 'in_progress' | 'finished' =>
   room.game ? room.game.status : 'waiting';
+
+const toHistoryEntry = (room: Omit<RoomRecord, 'history'>): PublicRoomState => ({
+  id: room.id,
+  config: room.config,
+  connectedUserIds: [],
+  hostUserId: room.hostUserId,
+  participants: room.participants,
+  stateVersion: room.stateVersion,
+  game: room.game,
+  status: room.game ? room.game.status : 'waiting',
+});
+
+const mergeHistoryEntry = (
+  history: readonly PublicRoomState[],
+  nextEntry: PublicRoomState,
+): readonly PublicRoomState[] => {
+  const byVersion = new Map(history.map((entry) => [entry.stateVersion, entry]));
+  byVersion.set(nextEntry.stateVersion, nextEntry);
+
+  return [...byVersion.values()].sort((left, right) => left.stateVersion - right.stateVersion);
+};
 
 export const createInMemoryRoomStore = (
   options: InMemoryRoomStoreOptions = {},
@@ -83,11 +104,16 @@ export const createInMemoryRoomStore = (
         ],
         stateVersion: 0,
         game: null,
+        history: [],
         updatedAt: timestamp,
       };
+      const roomWithHistory: RoomRecord = {
+        ...room,
+        history: [toHistoryEntry(room)],
+      };
 
-      rooms.set(room.id, room);
-      return room;
+      rooms.set(room.id, roomWithHistory);
+      return roomWithHistory;
     },
     getRoom: async (roomId: string): Promise<RoomRecord | null> => {
       cleanupExpiredRooms();
@@ -101,8 +127,15 @@ export const createInMemoryRoomStore = (
       rooms.delete(roomId);
     },
     updateRoom: async (room: RoomRecord): Promise<void> => {
+      const previousRoom = rooms.get(room.id);
+      const roomSnapshot = toHistoryEntry({
+        ...room,
+        updatedAt: room.updatedAt,
+      });
+
       rooms.set(room.id, {
         ...room,
+        history: mergeHistoryEntry(previousRoom?.history ?? room.history, roomSnapshot),
         updatedAt: now(),
       });
     },

@@ -2,7 +2,7 @@ import { type Move } from '@splendor/game-engine';
 import { type FastifyInstance } from 'fastify';
 
 import { clientMessageSchema } from './protocol.js';
-import { applyRoomMove, toPublicRoomState } from '../services/game-service.js';
+import { applyRoomMove, toPublicRoomState, withConnectedUserIds } from '../services/game-service.js';
 import { type AuthenticatedUser, type RoomRecord, type ServerMessage } from '../types.js';
 
 export interface SocketLike {
@@ -44,6 +44,7 @@ const sendMessage = (socket: SocketLike, message: ServerMessage): boolean => {
         ? {
             roomId: message.room.id,
             stateVersion: message.room.stateVersion,
+            historyLength: message.roomHistory.length,
             connectedUserIds: message.room.connectedUserIds,
           }
         : {
@@ -72,10 +73,8 @@ export const broadcastRoomState = (
 ): void => {
   const message: ServerMessage = {
     type: 'room-state',
-    room: {
-      ...toPublicRoomState(room),
-      connectedUserIds: getConnectedUserIds(connections, roomId),
-    },
+    room: withConnectedUserIds(toPublicRoomState(room), getConnectedUserIds(connections, roomId)),
+    roomHistory: room.history,
   };
 
   const roomConnections = connections.get(roomId) ?? new Map();
@@ -129,7 +128,17 @@ export const submitRoomMoveFromSocket = async (
   }
 
   await app.serverDependencies.roomStore.updateRoom(moveResult.room);
-  broadcastRoomState(connections, roomId, moveResult.room);
+  const persistedRoom = await app.serverDependencies.roomStore.getRoom(roomId);
+
+  if (!persistedRoom) {
+    sendMessage(replySocket, {
+      type: 'error',
+      message: 'Room not found.',
+    });
+    return;
+  }
+
+  broadcastRoomState(connections, roomId, persistedRoom);
 };
 
 export const registerGameSocket = (

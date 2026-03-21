@@ -7,6 +7,7 @@ import {
   startRoomGame,
   toPublicRoomState,
   toPublicRoomSummary,
+  withConnectedUserIds,
 } from '../services/game-service.js';
 import { type AuthenticatedUser } from '../types.js';
 
@@ -57,8 +58,8 @@ export const registerRoomRoutes = (app: FastifyInstance): void => {
       ? never
       : T
     : never) => ({
-    ...toPublicRoomState(room),
-    connectedUserIds: app.getConnectedUserIds(room.id),
+    room: withConnectedUserIds(toPublicRoomState(room), app.getConnectedUserIds(room.id)),
+    roomHistory: room.history,
   });
 
   app.get('/api/rooms', async () => {
@@ -80,7 +81,7 @@ export const registerRoomRoutes = (app: FastifyInstance): void => {
         config: body,
       });
 
-      return reply.code(201).send({ room: toResponseRoom(room) });
+      return reply.code(201).send(toResponseRoom(room));
     } catch (error) {
       return reply
         .code(401)
@@ -98,7 +99,7 @@ export const registerRoomRoutes = (app: FastifyInstance): void => {
         return reply.code(404).send({ error: 'Room not found.' });
       }
 
-      return { room: toResponseRoom(room) };
+      return toResponseRoom(room);
     } catch (error) {
       return reply
         .code(401)
@@ -123,8 +124,14 @@ export const registerRoomRoutes = (app: FastifyInstance): void => {
       }
 
       await app.serverDependencies.roomStore.updateRoom(joined.room);
+      const persistedRoom = await app.serverDependencies.roomStore.getRoom(roomId);
+
+      if (!persistedRoom) {
+        return reply.code(404).send({ error: 'Room not found.' });
+      }
+
       await app.broadcastRoomState(roomId);
-      return { room: toResponseRoom(joined.room) };
+      return toResponseRoom(persistedRoom);
     } catch (error) {
       return reply
         .code(401)
@@ -149,8 +156,14 @@ export const registerRoomRoutes = (app: FastifyInstance): void => {
       }
 
       await app.serverDependencies.roomStore.updateRoom(started.room);
+      const persistedRoom = await app.serverDependencies.roomStore.getRoom(roomId);
+
+      if (!persistedRoom) {
+        return reply.code(404).send({ error: 'Room not found.' });
+      }
+
       await app.broadcastRoomState(roomId);
-      return { room: toResponseRoom(started.room) };
+      return toResponseRoom(persistedRoom);
     } catch (error) {
       return reply
         .code(401)
@@ -176,8 +189,14 @@ export const registerRoomRoutes = (app: FastifyInstance): void => {
       }
 
       await app.serverDependencies.roomStore.updateRoom(result.room);
+      const persistedRoom = await app.serverDependencies.roomStore.getRoom(roomId);
+
+      if (!persistedRoom) {
+        return reply.code(404).send({ error: 'Room not found.' });
+      }
+
       await app.broadcastRoomState(roomId);
-      return { room: toResponseRoom(result.room) };
+      return toResponseRoom(persistedRoom);
     } catch (error) {
       return reply
         .code(401)
