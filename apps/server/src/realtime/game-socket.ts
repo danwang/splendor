@@ -223,8 +223,12 @@ export const registerGameSocket = (
 
           if (sockets.size === 0) {
             connections.delete(roomId);
-          } else if (room) {
-            broadcastRoomState(connections, roomId, room);
+          } else {
+            void app.serverDependencies.roomStore.getRoom(roomId).then((currentRoom) => {
+              if (currentRoom) {
+                broadcastRoomState(connections, roomId, currentRoom);
+              }
+            });
           }
         });
       } catch (error) {
