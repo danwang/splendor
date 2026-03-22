@@ -214,6 +214,10 @@ export const RoomPage = () => {
               wasClean: event.wasClean,
               shouldReconnect,
             });
+            if (socketRef.current !== socket) {
+              return;
+            }
+
             socketRef.current = null;
             setIsSocketConnected(false);
             if (shouldReconnect) {

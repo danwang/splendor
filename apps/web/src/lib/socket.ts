@@ -28,7 +28,16 @@ export const connectToRoomSocket = (
 
   socket.addEventListener('open', onOpen);
   socket.addEventListener('message', (event) => {
-    onMessage(JSON.parse(event.data) as ServerMessage);
+    let parsed: ServerMessage;
+
+    try {
+      parsed = JSON.parse(event.data) as ServerMessage;
+    } catch {
+      // Ignore malformed JSON frames from server
+      return;
+    }
+
+    onMessage(parsed);
   });
   socket.addEventListener('close', onClose);
   socket.addEventListener('error', onError);
