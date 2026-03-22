@@ -77,20 +77,28 @@ export const broadcastRoomState = (
     roomHistory: room.history,
   };
 
-  const roomConnections = connections.get(roomId) ?? new Map();
+  const roomConnections = connections.get(roomId);
+
+  if (!roomConnections) {
+    return;
+  }
+
+  const failedSockets: SocketLike[] = [];
 
   roomConnections.forEach((_, socket) => {
     const sent = sendMessage(socket, message);
 
     if (!sent) {
-      roomConnections.delete(socket);
+      failedSockets.push(socket);
     }
   });
 
+  for (const socket of failedSockets) {
+    roomConnections.delete(socket);
+  }
+
   if (roomConnections.size === 0) {
     connections.delete(roomId);
-  } else {
-    connections.set(roomId, roomConnections);
   }
 };
 
@@ -224,11 +232,19 @@ export const registerGameSocket = (
           if (sockets.size === 0) {
             connections.delete(roomId);
           } else {
-            void app.serverDependencies.roomStore.getRoom(roomId).then((currentRoom) => {
-              if (currentRoom) {
-                broadcastRoomState(connections, roomId, currentRoom);
-              }
-            });
+            void app.serverDependencies.roomStore
+              .getRoom(roomId)
+              .then((currentRoom) => {
+                if (currentRoom && connections.has(roomId)) {
+                  broadcastRoomState(connections, roomId, currentRoom);
+                }
+              })
+              .catch((error) => {
+                console.debug('[server-room-socket] close:broadcast-failed', {
+                  roomId,
+                  error: error instanceof Error ? error.message : 'unknown',
+                });
+              });
           }
         });
       } catch (error) {
