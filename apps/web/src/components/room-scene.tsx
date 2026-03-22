@@ -2377,7 +2377,8 @@ export const RoomScene = ({
                       <div className="flex items-center gap-3">
                         <span
                           className={`h-2.5 w-2.5 rounded-full ${
-                            room.connectedUserIds.includes(participant.userId)
+                            (sourceRoom?.connectedUserIds ?? room.connectedUserIds).includes(participant.userId) ||
+                            (participant.userId === currentUserId && isSocketConnected)
                               ? 'bg-emerald-400 shadow-[0_0_10px_rgba(52,211,153,0.4)]'
                               : 'bg-rose-400/90 shadow-[0_0_10px_rgba(251,113,133,0.22)]'
                           }`}
