@@ -211,7 +211,7 @@ export const registerGameSocket = (
             connections,
             roomId,
             user,
-            parsed.move as Move,
+            parsed.move,
             socket,
           );
         });
