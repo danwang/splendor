@@ -10,7 +10,7 @@
 body {
   margin: 0;
   min-width: 320px;
-  min-height: 100vh;
+  min-height: 100dvh;
   background: #0b0d12;
 }
 
@@ -29,7 +29,7 @@ code {
 }
 
 #root {
-  min-height: 100vh;
+  min-height: 100dvh;
 }
 
 @keyframes player-waiting-sheen {
