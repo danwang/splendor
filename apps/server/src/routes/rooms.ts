@@ -13,15 +13,7 @@ import { type AuthenticatedUser } from '../types.js';
 
 const createRoomSchema = z.object({
   seatCount: z.union([z.literal(2), z.literal(3), z.literal(4)]),
-  targetScore: z.union([
-    z.literal(15),
-    z.literal(16),
-    z.literal(17),
-    z.literal(18),
-    z.literal(19),
-    z.literal(20),
-    z.literal(21),
-  ]),
+  targetScore: z.union([z.literal(15), z.literal(21)]),
 });
 
 const bootParticipantSchema = z.object({

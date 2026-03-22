@@ -5,7 +5,7 @@ import { createRoom, listRooms } from '../lib/api.js';
 import { useAppAuth } from '../lib/auth.js';
 import { type PublicRoomSummary, type RoomConfig } from '../lib/types.js';
 
-const targetScores = [15, 16, 17, 18, 19, 20, 21] as const;
+const targetScores = [15, 21] as const;
 const seatCounts = [2, 3, 4] as const;
 const roomPollIntervalMs = 5_000;
 

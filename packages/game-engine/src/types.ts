@@ -5,7 +5,7 @@ export const CARD_TIERS = [1, 2, 3] as const;
 export type TokenColor = (typeof TOKEN_COLORS)[number];
 export type GemColor = (typeof GEM_COLORS)[number];
 export type CardTier = (typeof CARD_TIERS)[number];
-export type TargetScore = 15 | 16 | 17 | 18 | 19 | 20 | 21;
+export type TargetScore = 15 | 21;
 export type SeatCount = 2 | 3 | 4;
 
 export interface PlayerIdentity {
