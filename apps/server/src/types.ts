@@ -51,10 +51,14 @@ export interface PublicRoomSummary {
   readonly updatedAt: number;
 }
 
-export type ClientMessage = {
-  readonly type: 'submit-move';
-  readonly move: Move;
-};
+export type ClientMessage =
+  | {
+      readonly type: 'submit-move';
+      readonly move: Move;
+    }
+  | {
+      readonly type: 'resign';
+    };
 
 export type ServerMessage =
   | {

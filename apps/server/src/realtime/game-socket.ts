@@ -2,7 +2,7 @@ import { type Move } from '@splendor/game-engine';
 import { type FastifyInstance } from 'fastify';
 
 import { clientMessageSchema } from './protocol.js';
-import { applyRoomMove, toPublicRoomState, withConnectedUserIds } from '../services/game-service.js';
+import { applyRoomMove, resignPlayer, toPublicRoomState, withConnectedUserIds } from '../services/game-service.js';
 import { type AuthenticatedUser, type RoomRecord, type ServerMessage } from '../types.js';
 
 export interface SocketLike {
@@ -100,6 +100,51 @@ export const broadcastRoomState = (
   if (roomConnections.size === 0) {
     connections.delete(roomId);
   }
+};
+
+export const submitResignFromSocket = async (
+  app: FastifyInstance,
+  connections: Map<string, Map<SocketLike, string>>,
+  roomId: string,
+  user: AuthenticatedUser,
+  replySocket: SocketLike,
+): Promise<void> => {
+  console.debug('[server-room-socket] resign:received', {
+    roomId,
+    userId: user.id,
+  });
+  const currentRoom = await app.serverDependencies.roomStore.getRoom(roomId);
+
+  if (!currentRoom) {
+    sendMessage(replySocket, {
+      type: 'error',
+      message: 'Room not found.',
+    });
+    return;
+  }
+
+  const resignResult = resignPlayer(currentRoom, user);
+
+  if (!resignResult.ok) {
+    sendMessage(replySocket, {
+      type: 'error',
+      message: resignResult.message,
+    });
+    return;
+  }
+
+  await app.serverDependencies.roomStore.updateRoom(resignResult.room);
+  const persistedRoom = await app.serverDependencies.roomStore.getRoom(roomId);
+
+  if (!persistedRoom) {
+    sendMessage(replySocket, {
+      type: 'error',
+      message: 'Room not found.',
+    });
+    return;
+  }
+
+  broadcastRoomState(connections, roomId, persistedRoom);
 };
 
 export const submitRoomMoveFromSocket = async (
@@ -203,6 +248,11 @@ export const registerGameSocket = (
               type: 'error',
               message: 'Invalid websocket message.',
             });
+            return;
+          }
+
+          if (parsed.type === 'resign') {
+            await submitResignFromSocket(app, connections, roomId, user, socket);
             return;
           }
 

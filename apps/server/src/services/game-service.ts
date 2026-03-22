@@ -1,4 +1,4 @@
-import { reduceGame, setupGameWithSeed } from '@splendor/game-engine';
+import { reduceGame, resolveGameResult, setupGameWithSeed, type GameState } from '@splendor/game-engine';
 
 import {
   type AuthenticatedUser,
@@ -138,6 +138,95 @@ export const bootRoomParticipant = (
     room: {
       ...room,
       participants: room.participants.filter((participant) => participant.userId !== targetUserId),
+      stateVersion: room.stateVersion + 1,
+      updatedAt: Date.now(),
+    },
+  };
+};
+
+const findNextActivePlayerIndex = (
+  players: GameState['players'],
+  currentIndex: number,
+): number => {
+  const count = players.length;
+
+  for (let i = 1; i <= count; i++) {
+    const nextIndex = (currentIndex + i) % count;
+
+    if (!players[nextIndex]?.resigned) {
+      return nextIndex;
+    }
+  }
+
+  return currentIndex;
+};
+
+export const resignPlayer = (
+  room: RoomRecord,
+  user: AuthenticatedUser,
+): { readonly ok: true; readonly room: RoomRecord } | { readonly ok: false; readonly message: string } => {
+  if (!room.game) {
+    return { ok: false, message: 'This room has not started a game yet.' };
+  }
+
+  if (room.game.status === 'finished') {
+    return { ok: false, message: 'The game is already finished.' };
+  }
+
+  const playerIndex = room.game.players.findIndex((player) => player.identity.id === user.id);
+
+  if (playerIndex === -1) {
+    return { ok: false, message: 'You are not a player in this game.' };
+  }
+
+  const player = room.game.players[playerIndex]!;
+
+  if (player.resigned) {
+    return { ok: false, message: 'You have already resigned.' };
+  }
+
+  const updatedPlayers = room.game.players.map((p, i) =>
+    i === playerIndex ? { ...p, resigned: true as const } : p,
+  );
+
+  const activePlayers = updatedPlayers.filter((p) => !p.resigned);
+
+  let updatedGame: GameState;
+
+  if (activePlayers.length <= 1) {
+    const result = resolveGameResult(updatedPlayers);
+
+    updatedGame = {
+      ...room.game,
+      players: updatedPlayers,
+      status: 'finished',
+      turn: room.game.turn,
+      ...(result ? { result } : {}),
+    };
+  } else if (room.game.turn.activePlayerIndex === playerIndex) {
+    const nextIndex = findNextActivePlayerIndex(updatedPlayers, playerIndex);
+
+    updatedGame = {
+      ...room.game,
+      players: updatedPlayers,
+      turn: {
+        kind: 'main-action',
+        activePlayerIndex: nextIndex,
+        round: room.game.turn.round,
+      },
+    };
+  } else {
+    updatedGame = {
+      ...room.game,
+      players: updatedPlayers,
+    };
+  }
+
+  return {
+    ok: true,
+    room: {
+      ...room,
+      game: updatedGame,
       stateVersion: room.stateVersion + 1,
       updatedAt: Date.now(),
     },

@@ -32,15 +32,34 @@ const replacePlayer = (
 ): readonly PlayerState[] =>
   players.map((entry, entryIndex) => (entryIndex === index ? player : entry));
 
+const findNextActivePlayerIndex = (
+  players: readonly PlayerState[],
+  currentIndex: number,
+): number => {
+  const count = players.length;
+
+  for (let i = 1; i <= count; i++) {
+    const nextIndex = (currentIndex + i) % count;
+
+    if (!players[nextIndex]?.resigned) {
+      return nextIndex;
+    }
+  }
+
+  return currentIndex;
+};
+
 const advanceTurn = (
   state: GameState,
   updatedPlayers: readonly PlayerState[],
   updatedNobles: GameState['nobles'],
 ): ReduceGameResult => {
   const currentTurn = state.turn;
-  const wrapped = currentTurn.activePlayerIndex === state.players.length - 1;
+  const nextActivePlayerIndex = findNextActivePlayerIndex(updatedPlayers, currentTurn.activePlayerIndex);
+  const wrapped = nextActivePlayerIndex <= currentTurn.activePlayerIndex;
   const someoneReachedTarget = updatedPlayers.some(
     (player) =>
+      !player.resigned &&
       player.purchasedCards.reduce((sum, card) => sum + card.points, 0) +
         player.nobles.reduce((sum, noble) => sum + noble.points, 0) >=
       state.config.targetScore,
@@ -48,11 +67,7 @@ const advanceTurn = (
   const shouldEnd = wrapped && someoneReachedTarget;
   const nextTurn = {
     kind: 'main-action' as const,
-    activePlayerIndex: shouldEnd
-      ? currentTurn.activePlayerIndex
-      : wrapped
-        ? 0
-        : currentTurn.activePlayerIndex + 1,
+    activePlayerIndex: shouldEnd ? currentTurn.activePlayerIndex : nextActivePlayerIndex,
     round: shouldEnd ? currentTurn.round : wrapped ? currentTurn.round + 1 : currentTurn.round,
   };
 

@@ -161,6 +161,10 @@ export const deriveRoomActivityEntries = (
       return;
     }
 
+    if (!previousPlayer.resigned && nextPlayer.resigned) {
+      pushEntry(entries, previousRoom, nextRoom, `${nextPlayer.identity.displayName} resigned.`, 'sky');
+    }
+
     const purchasedCards = nextPlayer.purchasedCards.filter(
       (card) => !previousPlayer.purchasedCards.some((entry) => entry.id === card.id),
     );

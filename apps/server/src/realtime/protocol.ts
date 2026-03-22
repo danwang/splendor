@@ -29,7 +29,7 @@ const moveSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('discard-tokens'), tokens: z.array(gemColor) }),
 ]);
 
-export const clientMessageSchema = z.object({
-  type: z.literal('submit-move'),
-  move: moveSchema,
-});
+export const clientMessageSchema = z.discriminatedUnion('type', [
+  z.object({ type: z.literal('submit-move'), move: moveSchema }),
+  z.object({ type: z.literal('resign') }),
+]);
