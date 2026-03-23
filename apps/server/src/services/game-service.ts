@@ -239,13 +239,28 @@ export const resignPlayer = (
       }
     }
   } else {
-    // Non-active player resigned. Never end the game here — the active player may
-    // still be mid-noble or mid-discard. advanceTurn (engine) will detect
-    // last-player-standing when the active player finishes their turn.
-    updatedGame = {
-      ...room.game,
-      players: updatedPlayers,
-    };
+    // Non-active player resigned.
+    if (activePlayers.length <= 1 && room.game.turn.kind === 'main-action') {
+      // Active player is in main-action and now the last one standing.
+      // End immediately — deferring would grant them a free strategic move.
+      const result = resolveGameResult(updatedPlayers);
+
+      updatedGame = {
+        ...room.game,
+        players: updatedPlayers,
+        status: 'finished',
+        turn: { kind: 'main-action', activePlayerIndex: room.game.turn.activePlayerIndex, round: room.game.turn.round },
+        ...(result ? { result } : {}),
+      };
+    } else {
+      // Either multiple players remain, or the active player is mid-noble/mid-discard
+      // (mandatory resolution they already earned). Let them finish;
+      // advanceTurn will detect last-player-standing when the turn advances.
+      updatedGame = {
+        ...room.game,
+        players: updatedPlayers,
+      };
+    }
   }
 
   return {

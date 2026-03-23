@@ -234,7 +234,8 @@ export const deriveRoomActivityEntries = (
     if (
       previousGame.turn.kind === 'noble' &&
       nextActor.nobles.length === previousActor.nobles.length &&
-      nextGame.turn.activePlayerIndex !== previousGame.turn.activePlayerIndex
+      nextGame.turn.activePlayerIndex !== previousGame.turn.activePlayerIndex &&
+      !nextActor.resigned
     ) {
       pushEntry(entries, previousRoom, nextRoom, `${previousActor.identity.displayName} skipped a noble.`, 'sky');
     }
