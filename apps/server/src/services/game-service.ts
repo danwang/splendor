@@ -1,4 +1,4 @@
-import { reduceGame, resolveGameResult, setupGameWithSeed, type GameState } from '@splendor/game-engine';
+import { getPlayerScore, reduceGame, resolveGameResult, setupGameWithSeed, type GameState } from '@splendor/game-engine';
 
 import {
   type AuthenticatedUser,
@@ -205,16 +205,34 @@ export const resignPlayer = (
     };
   } else if (room.game.turn.activePlayerIndex === playerIndex) {
     const nextIndex = findNextActivePlayerIndex(updatedPlayers, playerIndex);
+    const wrapped = nextIndex <= playerIndex;
+    const someoneReachedTarget =
+      wrapped &&
+      updatedPlayers.some(
+        (p) => !p.resigned && getPlayerScore(p) >= room.game!.config.targetScore,
+      );
 
-    updatedGame = {
-      ...room.game,
-      players: updatedPlayers,
-      turn: {
-        kind: 'main-action',
-        activePlayerIndex: nextIndex,
-        round: room.game.turn.round,
-      },
-    };
+    if (someoneReachedTarget) {
+      const result = resolveGameResult(updatedPlayers);
+
+      updatedGame = {
+        ...room.game,
+        players: updatedPlayers,
+        status: 'finished',
+        turn: { kind: 'main-action', activePlayerIndex: playerIndex, round: room.game.turn.round },
+        ...(result ? { result } : {}),
+      };
+    } else {
+      updatedGame = {
+        ...room.game,
+        players: updatedPlayers,
+        turn: {
+          kind: 'main-action',
+          activePlayerIndex: nextIndex,
+          round: wrapped ? room.game.turn.round + 1 : room.game.turn.round,
+        },
+      };
+    }
   } else {
     updatedGame = {
       ...room.game,
