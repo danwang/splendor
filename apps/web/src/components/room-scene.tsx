@@ -1067,7 +1067,7 @@ export const RoomScene = ({
         })
       : [];
   const forcedSheet =
-    replaySelection !== null
+    replaySelection !== null || game?.status === 'finished'
       ? null
       : interaction?.isCurrentUsersTurn && game?.turn.kind === 'discard'
       ? 'discard'

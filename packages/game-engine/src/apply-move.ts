@@ -57,6 +57,7 @@ const advanceTurn = (
   const currentTurn = state.turn;
   const nextActivePlayerIndex = findNextActivePlayerIndex(updatedPlayers, currentTurn.activePlayerIndex);
   const wrapped = nextActivePlayerIndex <= currentTurn.activePlayerIndex;
+  const isLastPlayerStanding = updatedPlayers.filter((p) => !p.resigned).length <= 1;
   const someoneReachedTarget = updatedPlayers.some(
     (player) =>
       !player.resigned &&
@@ -64,7 +65,7 @@ const advanceTurn = (
         player.nobles.reduce((sum, noble) => sum + noble.points, 0) >=
       state.config.targetScore,
   );
-  const shouldEnd = wrapped && someoneReachedTarget;
+  const shouldEnd = isLastPlayerStanding || (wrapped && someoneReachedTarget);
   const nextTurn = {
     kind: 'main-action' as const,
     activePlayerIndex: shouldEnd ? currentTurn.activePlayerIndex : nextActivePlayerIndex,

@@ -193,26 +193,10 @@ export const resignPlayer = (
 
   let updatedGame: GameState;
 
-  if (activePlayers.length <= 1) {
-    const result = resolveGameResult(updatedPlayers);
-
-    updatedGame = {
-      ...room.game,
-      players: updatedPlayers,
-      status: 'finished',
-      turn: room.game.turn,
-      ...(result ? { result } : {}),
-    };
-  } else if (room.game.turn.activePlayerIndex === playerIndex) {
-    const nextIndex = findNextActivePlayerIndex(updatedPlayers, playerIndex);
-    const wrapped = nextIndex <= playerIndex;
-    const someoneReachedTarget =
-      wrapped &&
-      updatedPlayers.some(
-        (p) => !p.resigned && getPlayerScore(p) >= room.game!.config.targetScore,
-      );
-
-    if (someoneReachedTarget) {
+  if (room.game.turn.activePlayerIndex === playerIndex) {
+    if (activePlayers.length <= 1) {
+      // Active player is the last one — end immediately.
+      // Always use main-action so the finished snapshot has no blocking turn kind.
       const result = resolveGameResult(updatedPlayers);
 
       updatedGame = {
@@ -223,17 +207,41 @@ export const resignPlayer = (
         ...(result ? { result } : {}),
       };
     } else {
-      updatedGame = {
-        ...room.game,
-        players: updatedPlayers,
-        turn: {
-          kind: 'main-action',
-          activePlayerIndex: nextIndex,
-          round: wrapped ? room.game.turn.round + 1 : room.game.turn.round,
-        },
-      };
+      // Active player resigned, others remain — advance turn with round/game-end check.
+      const nextIndex = findNextActivePlayerIndex(updatedPlayers, playerIndex);
+      const wrapped = nextIndex <= playerIndex;
+      const someoneReachedTarget =
+        wrapped &&
+        updatedPlayers.some(
+          (p) => !p.resigned && getPlayerScore(p) >= room.game!.config.targetScore,
+        );
+
+      if (someoneReachedTarget) {
+        const result = resolveGameResult(updatedPlayers);
+
+        updatedGame = {
+          ...room.game,
+          players: updatedPlayers,
+          status: 'finished',
+          turn: { kind: 'main-action', activePlayerIndex: playerIndex, round: room.game.turn.round },
+          ...(result ? { result } : {}),
+        };
+      } else {
+        updatedGame = {
+          ...room.game,
+          players: updatedPlayers,
+          turn: {
+            kind: 'main-action',
+            activePlayerIndex: nextIndex,
+            round: wrapped ? room.game.turn.round + 1 : room.game.turn.round,
+          },
+        };
+      }
     }
   } else {
+    // Non-active player resigned. Never end the game here — the active player may
+    // still be mid-noble or mid-discard. advanceTurn (engine) will detect
+    // last-player-standing when the active player finishes their turn.
     updatedGame = {
       ...room.game,
       players: updatedPlayers,
