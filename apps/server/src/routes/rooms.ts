@@ -13,20 +13,19 @@ import { type AuthenticatedUser } from '../types.js';
 
 const createRoomSchema = z.object({
   seatCount: z.union([z.literal(2), z.literal(3), z.literal(4)]),
-  targetScore: z.union([
-    z.literal(15),
-    z.literal(16),
-    z.literal(17),
-    z.literal(18),
-    z.literal(19),
-    z.literal(20),
-    z.literal(21),
-  ]),
+  targetScore: z.union([z.literal(15), z.literal(21)]),
 });
 
 const bootParticipantSchema = z.object({
   userId: z.string().min(1),
 });
+
+const toErrorReply = (reply: import('fastify').FastifyReply, error: unknown) => {
+  if (error instanceof z.ZodError) {
+    return reply.code(400).send({ error: error.issues.map((i) => i.message).join(', ') });
+  }
+  return reply.code(401).send({ error: error instanceof Error ? error.message : 'Unauthorized.' });
+};
 
 const getBearerToken = (request: FastifyRequest): string | null => {
   const authorization = request.headers.authorization;
@@ -83,9 +82,7 @@ export const registerRoomRoutes = (app: FastifyInstance): void => {
 
       return reply.code(201).send(toResponseRoom(room));
     } catch (error) {
-      return reply
-        .code(401)
-        .send({ error: error instanceof Error ? error.message : 'Unauthorized.' });
+      return toErrorReply(reply, error);
     }
   });
 
@@ -101,9 +98,7 @@ export const registerRoomRoutes = (app: FastifyInstance): void => {
 
       return toResponseRoom(room);
     } catch (error) {
-      return reply
-        .code(401)
-        .send({ error: error instanceof Error ? error.message : 'Unauthorized.' });
+      return toErrorReply(reply, error);
     }
   });
 
@@ -133,9 +128,7 @@ export const registerRoomRoutes = (app: FastifyInstance): void => {
       await app.broadcastRoomState(roomId);
       return toResponseRoom(persistedRoom);
     } catch (error) {
-      return reply
-        .code(401)
-        .send({ error: error instanceof Error ? error.message : 'Unauthorized.' });
+      return toErrorReply(reply, error);
     }
   });
 
@@ -165,9 +158,7 @@ export const registerRoomRoutes = (app: FastifyInstance): void => {
       await app.broadcastRoomState(roomId);
       return toResponseRoom(persistedRoom);
     } catch (error) {
-      return reply
-        .code(401)
-        .send({ error: error instanceof Error ? error.message : 'Unauthorized.' });
+      return toErrorReply(reply, error);
     }
   });
 
@@ -198,9 +189,7 @@ export const registerRoomRoutes = (app: FastifyInstance): void => {
       await app.broadcastRoomState(roomId);
       return toResponseRoom(persistedRoom);
     } catch (error) {
-      return reply
-        .code(401)
-        .send({ error: error instanceof Error ? error.message : 'Unauthorized.' });
+      return toErrorReply(reply, error);
     }
   });
 };

@@ -61,6 +61,21 @@ describe('server app', () => {
     expect(response.statusCode).toBe(401);
   });
 
+  it('rejects an invalid targetScore with 400, not 401', async () => {
+    const app = await createApp({ dependencies: { verifyAccessToken } });
+
+    apps.push(app);
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/rooms',
+      headers: authHeader('host'),
+      payload: { seatCount: 2, targetScore: 18 },
+    });
+
+    expect(response.statusCode).toBe(400);
+  });
+
   it('creates a room with the requested target score for an authorized user', async () => {
     const app = await createApp({ dependencies: { verifyAccessToken } });
 

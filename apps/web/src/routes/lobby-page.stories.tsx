@@ -22,7 +22,7 @@ const mockRooms: readonly PublicRoomSummary[] = [
   },
   {
     id: 'storybook-live-room',
-    config: { seatCount: 4, targetScore: 18 },
+    config: { seatCount: 4, targetScore: 21 },
     hostUserId: 'dev-carmen',
     participants: [
       { userId: 'dev-carmen', displayName: 'Carmen Topaz' },
