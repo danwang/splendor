@@ -185,6 +185,12 @@ export const resignPlayer = (
     return { ok: false, message: 'You have already resigned.' };
   }
 
+  const currentActivePlayers = room.game.players.filter((p) => !p.resigned);
+
+  if (currentActivePlayers.length <= 1) {
+    return { ok: false, message: 'You cannot resign — you are the last remaining player.' };
+  }
+
   const updatedPlayers = room.game.players.map((p, i) =>
     i === playerIndex ? { ...p, resigned: true as const } : p,
   );
