@@ -2059,12 +2059,12 @@ export const RoomScene = ({
   };
 
   const renderMenuSheet = () => {
-    const currentPlayer = game?.players.find((p) => p.identity.id === currentUserId);
+    const livePlayer = sourceRoom?.game?.players.find((p) => p.identity.id === currentUserId);
     const canResign =
-      sourceRoom?.status === 'in_progress' &&
+      replaySelection === null &&
+      sourceRoom?.game?.status === 'in_progress' &&
       joined &&
-      !currentPlayer?.resigned &&
-      game?.status === 'in_progress';
+      !livePlayer?.resigned;
 
     return (
       <div className="space-y-4">
