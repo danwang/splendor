@@ -161,6 +161,10 @@ export const deriveRoomActivityEntries = (
       return;
     }
 
+    if (!previousPlayer.resigned && nextPlayer.resigned) {
+      pushEntry(entries, previousRoom, nextRoom, `${nextPlayer.identity.displayName} resigned.`, 'sky');
+    }
+
     const purchasedCards = nextPlayer.purchasedCards.filter(
       (card) => !previousPlayer.purchasedCards.some((entry) => entry.id === card.id),
     );
@@ -230,7 +234,8 @@ export const deriveRoomActivityEntries = (
     if (
       previousGame.turn.kind === 'noble' &&
       nextActor.nobles.length === previousActor.nobles.length &&
-      nextGame.turn.activePlayerIndex !== previousGame.turn.activePlayerIndex
+      nextGame.turn.activePlayerIndex !== previousGame.turn.activePlayerIndex &&
+      !nextActor.resigned
     ) {
       pushEntry(entries, previousRoom, nextRoom, `${previousActor.identity.displayName} skipped a noble.`, 'sky');
     }

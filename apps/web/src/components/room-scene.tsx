@@ -694,6 +694,7 @@ export interface RoomSceneProps {
   readonly initialActivePanel?: BoardPanel;
   readonly currentUserId: string | undefined;
   readonly errorMessage: string | null;
+  readonly onResign: () => void;
   readonly initialReplayAfterStateVersion?: number;
   readonly initialSelection?: Selection;
   readonly initialResultsVisible?: boolean;
@@ -722,6 +723,7 @@ export const RoomScene = ({
   onBootParticipant,
   onJoinRoom,
   onLogout,
+  onResign,
   onStartGame,
   onSubmitMove,
   room: sourceRoom,
@@ -732,6 +734,7 @@ export const RoomScene = ({
   const [activePanel, setActivePanel] = useState<BoardPanel>(initialActivePanel);
   const [bankSelection, setBankSelection] = useState<readonly TokenColor[]>([]);
   const [discardSelection, setDiscardSelection] = useState<readonly GemColor[]>([]);
+  const [isConfirmingResign, setIsConfirmingResign] = useState(false);
   const normalizedRoomHistory = useMemo(() => {
     const byVersion = new Map<number, PublicRoomState>();
 
@@ -861,6 +864,12 @@ export const RoomScene = ({
     setDiscardSelection([]);
     setPurchaseSelection(createEmptyPaymentSelection());
   }, [initialSelection, sourceRoom?.stateVersion]);
+
+  useEffect(() => {
+    if (selection?.type !== 'menu') {
+      setIsConfirmingResign(false);
+    }
+  }, [selection]);
 
   useEffect(() => {
     setActivityEntries(deriveRoomHistoryEntries(normalizedRoomHistory));
@@ -1058,7 +1067,7 @@ export const RoomScene = ({
         })
       : [];
   const forcedSheet =
-    replaySelection !== null
+    replaySelection !== null || game?.status === 'finished'
       ? null
       : interaction?.isCurrentUsersTurn && game?.turn.kind === 'discard'
       ? 'discard'
@@ -2049,36 +2058,83 @@ export const RoomScene = ({
     );
   };
 
-  const renderMenuSheet = () => (
-    <div className="space-y-4">
-      <div className="grid gap-2">
-        <Link
-          className="rounded-[1rem] border border-white/8 bg-white/4 px-4 py-3 text-sm font-medium text-stone-100 transition hover:border-white/15 hover:bg-white/6"
-          to="/"
-        >
-          Back to lobby
-        </Link>
-      </div>
+  const renderMenuSheet = () => {
+    const livePlayer = sourceRoom?.game?.players.find((p) => p.identity.id === currentUserId);
+    const canResign =
+      replaySelection === null &&
+      sourceRoom?.game?.status === 'in_progress' &&
+      joined &&
+      !livePlayer?.resigned;
 
-      <div className="rounded-[1rem] border border-white/8 bg-white/4 p-3 text-sm text-stone-300">
-        Room {room?.id} • v{room?.stateVersion}
-      </div>
-
-      {room ? (
-        <div className="rounded-[1rem] border border-white/8 bg-white/4 p-3 text-sm text-stone-300">
-          {room.config.targetScore} pts • {room.config.seatCount} players
+    return (
+      <div className="space-y-4">
+        <div className="grid gap-2">
+          <Link
+            className="rounded-[1rem] border border-white/8 bg-white/4 px-4 py-3 text-sm font-medium text-stone-100 transition hover:border-white/15 hover:bg-white/6"
+            to="/"
+          >
+            Back to lobby
+          </Link>
         </div>
-      ) : null}
 
-      <button
-        className={subtleButtonClass}
-        onClick={onLogout}
-        type="button"
-      >
-        Log out
-      </button>
-    </div>
-  );
+        <div className="rounded-[1rem] border border-white/8 bg-white/4 p-3 text-sm text-stone-300">
+          Room {room?.id} • v{room?.stateVersion}
+        </div>
+
+        {room ? (
+          <div className="rounded-[1rem] border border-white/8 bg-white/4 p-3 text-sm text-stone-300">
+            {room.config.targetScore} pts • {room.config.seatCount} players
+          </div>
+        ) : null}
+
+        {canResign ? (
+          isConfirmingResign ? (
+            <div className="rounded-[1rem] border border-rose-500/25 bg-rose-500/8 p-3">
+              <p className="mb-3 text-sm text-rose-200">
+                Resign from this game? In multiplayer, the game continues without you.
+              </p>
+              <div className="flex gap-2">
+                <button
+                  className="flex-1 rounded-full bg-rose-600 px-3 py-2 text-sm font-semibold text-white transition hover:bg-rose-500"
+                  onClick={() => {
+                    setIsConfirmingResign(false);
+                    setSelection(null);
+                    onResign();
+                  }}
+                  type="button"
+                >
+                  Confirm resign
+                </button>
+                <button
+                  className={subtleButtonClass}
+                  onClick={() => setIsConfirmingResign(false)}
+                  type="button"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          ) : (
+            <button
+              className="rounded-[1rem] border border-rose-500/20 bg-rose-500/6 px-4 py-3 text-sm font-medium text-rose-300 transition hover:border-rose-500/35 hover:bg-rose-500/10"
+              onClick={() => setIsConfirmingResign(true)}
+              type="button"
+            >
+              Resign
+            </button>
+          )
+        ) : null}
+
+        <button
+          className={subtleButtonClass}
+          onClick={onLogout}
+          type="button"
+        >
+          Log out
+        </button>
+      </div>
+    );
+  };
 
   const renderActionSheetContent = () => {
     if (!game || !interaction) {

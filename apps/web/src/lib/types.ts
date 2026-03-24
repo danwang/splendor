@@ -48,7 +48,11 @@ export type ServerMessage =
       readonly message: string;
     };
 
-export interface ClientMessage {
-  readonly type: 'submit-move';
-  readonly move: Move;
-}
+export type ClientMessage =
+  | {
+      readonly type: 'submit-move';
+      readonly move: Move;
+    }
+  | {
+      readonly type: 'resign';
+    };

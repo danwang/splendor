@@ -6,6 +6,7 @@ import { setupGameWithSeed } from './setup-with-seed.js';
 
 export { DEVELOPMENT_CARDS } from './data/cards.js';
 export { NOBLES } from './data/nobles.js';
+export { getPlayerScore, resolveGameResult } from './helpers.js';
 export * from './selectors.js';
 export { createShuffledSetup, listLegalMoves, reduceGame, setupGame, setupGameWithSeed };
 export * from './types.js';

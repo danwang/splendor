@@ -53,6 +53,10 @@ export const GameCompleteScreen = ({
           <div className="space-y-2">
             {[...game.players]
               .sort((left, right) => {
+                if (Boolean(left.resigned) !== Boolean(right.resigned)) {
+                  return left.resigned ? 1 : -1;
+                }
+
                 const leftScore = summaryByPlayerId[left.identity.id]?.score ?? 0;
                 const rightScore = summaryByPlayerId[right.identity.id]?.score ?? 0;
 
@@ -88,13 +92,15 @@ export const GameCompleteScreen = ({
                           {player.identity.displayName}
                         </p>
                         <p className="text-[11px] uppercase tracking-[0.18em] text-stone-500">
-                          {player.purchasedCards.length} cards
+                          {player.resigned ? 'Resigned' : `${player.purchasedCards.length} cards`}
                         </p>
                       </div>
                     </div>
                     <div className="text-right">
                       <p className="text-[10px] uppercase tracking-[0.18em] text-stone-500">VP</p>
-                      <p className="text-xl font-semibold text-amber-50">{playerScore}</p>
+                      <p className={`text-xl font-semibold ${player.resigned ? 'text-stone-500' : 'text-amber-50'}`}>
+                        {playerScore}
+                      </p>
                     </div>
                   </div>
                 );

@@ -67,6 +67,7 @@ export interface PlayerState {
   readonly purchasedCards: readonly Card[];
   readonly reservedCards: readonly Card[];
   readonly nobles: readonly Noble[];
+  readonly resigned?: boolean;
 }
 
 export interface GameResult {

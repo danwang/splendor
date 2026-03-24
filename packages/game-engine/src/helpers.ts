@@ -372,11 +372,13 @@ export const availableNobles = (
 };
 
 export const resolveGameResult = (players: readonly PlayerState[]): GameResult | null => {
-  const scores = players.map((player) => ({
-    playerId: player.identity.id,
-    score: getPlayerScore(player),
-    cardCount: player.purchasedCards.length,
-  }));
+  const scores = players
+    .filter((player) => !player.resigned)
+    .map((player) => ({
+      playerId: player.identity.id,
+      score: getPlayerScore(player),
+      cardCount: player.purchasedCards.length,
+    }));
   const maxScore = Math.max(...scores.map((entry) => entry.score));
   const contenders = scores.filter((entry) => entry.score === maxScore);
 

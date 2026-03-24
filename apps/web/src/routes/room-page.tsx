@@ -277,6 +277,15 @@ export const RoomPage = () => {
     });
   };
 
+  const resign = (): void => {
+    if (!socketRef.current || socketRef.current.readyState !== WebSocket.OPEN) {
+      setErrorMessage('The room socket is not connected yet.');
+      return;
+    }
+
+    sendSocketMessage(socketRef.current, { type: 'resign' });
+  };
+
   const handleJoinRoom = async (): Promise<void> => {
     try {
       setIsWorking(true);
@@ -391,6 +400,7 @@ export const RoomPage = () => {
         void handleJoinRoom();
       }}
       onLogout={() => logout()}
+      onResign={resign}
       onStartGame={() => {
         void handleStartGame();
       }}

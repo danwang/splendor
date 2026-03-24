@@ -1,4 +1,4 @@
-import { reduceGame, setupGameWithSeed } from '@splendor/game-engine';
+import { getPlayerScore, reduceGame, resolveGameResult, setupGameWithSeed, type GameState } from '@splendor/game-engine';
 
 import {
   type AuthenticatedUser,
@@ -138,6 +138,142 @@ export const bootRoomParticipant = (
     room: {
       ...room,
       participants: room.participants.filter((participant) => participant.userId !== targetUserId),
+      stateVersion: room.stateVersion + 1,
+      updatedAt: Date.now(),
+    },
+  };
+};
+
+const findNextActivePlayerIndex = (
+  players: GameState['players'],
+  currentIndex: number,
+): number => {
+  const count = players.length;
+
+  for (let i = 1; i <= count; i++) {
+    const nextIndex = (currentIndex + i) % count;
+
+    if (!players[nextIndex]?.resigned) {
+      return nextIndex;
+    }
+  }
+
+  return currentIndex;
+};
+
+export const resignPlayer = (
+  room: RoomRecord,
+  user: AuthenticatedUser,
+): { readonly ok: true; readonly room: RoomRecord } | { readonly ok: false; readonly message: string } => {
+  if (!room.game) {
+    return { ok: false, message: 'This room has not started a game yet.' };
+  }
+
+  if (room.game.status === 'finished') {
+    return { ok: false, message: 'The game is already finished.' };
+  }
+
+  const playerIndex = room.game.players.findIndex((player) => player.identity.id === user.id);
+
+  if (playerIndex === -1) {
+    return { ok: false, message: 'You are not a player in this game.' };
+  }
+
+  const player = room.game.players[playerIndex]!;
+
+  if (player.resigned) {
+    return { ok: false, message: 'You have already resigned.' };
+  }
+
+  const currentActivePlayers = room.game.players.filter((p) => !p.resigned);
+
+  if (currentActivePlayers.length <= 1) {
+    return { ok: false, message: 'You cannot resign — you are the last remaining player.' };
+  }
+
+  const updatedPlayers = room.game.players.map((p, i) =>
+    i === playerIndex ? { ...p, resigned: true as const } : p,
+  );
+
+  const activePlayers = updatedPlayers.filter((p) => !p.resigned);
+
+  let updatedGame: GameState;
+
+  if (room.game.turn.activePlayerIndex === playerIndex) {
+    if (activePlayers.length <= 1) {
+      // Active player is the last one — end immediately.
+      // Always use main-action so the finished snapshot has no blocking turn kind.
+      const result = resolveGameResult(updatedPlayers);
+
+      updatedGame = {
+        ...room.game,
+        players: updatedPlayers,
+        status: 'finished',
+        turn: { kind: 'main-action', activePlayerIndex: playerIndex, round: room.game.turn.round },
+        ...(result ? { result } : {}),
+      };
+    } else {
+      // Active player resigned, others remain — advance turn with round/game-end check.
+      const nextIndex = findNextActivePlayerIndex(updatedPlayers, playerIndex);
+      const wrapped = nextIndex <= playerIndex;
+      const someoneReachedTarget =
+        wrapped &&
+        updatedPlayers.some(
+          (p) => !p.resigned && getPlayerScore(p) >= room.game!.config.targetScore,
+        );
+
+      if (someoneReachedTarget) {
+        const result = resolveGameResult(updatedPlayers);
+
+        updatedGame = {
+          ...room.game,
+          players: updatedPlayers,
+          status: 'finished',
+          turn: { kind: 'main-action', activePlayerIndex: playerIndex, round: room.game.turn.round },
+          ...(result ? { result } : {}),
+        };
+      } else {
+        updatedGame = {
+          ...room.game,
+          players: updatedPlayers,
+          turn: {
+            kind: 'main-action',
+            activePlayerIndex: nextIndex,
+            round: wrapped ? room.game.turn.round + 1 : room.game.turn.round,
+          },
+        };
+      }
+    }
+  } else {
+    // Non-active player resigned.
+    if (activePlayers.length <= 1 && room.game.turn.kind === 'main-action') {
+      // Active player is in main-action and now the last one standing.
+      // End immediately — deferring would grant them a free strategic move.
+      const result = resolveGameResult(updatedPlayers);
+
+      updatedGame = {
+        ...room.game,
+        players: updatedPlayers,
+        status: 'finished',
+        turn: { kind: 'main-action', activePlayerIndex: room.game.turn.activePlayerIndex, round: room.game.turn.round },
+        ...(result ? { result } : {}),
+      };
+    } else {
+      // Either multiple players remain, or the active player is mid-noble/mid-discard
+      // (mandatory resolution they already earned). Let them finish;
+      // advanceTurn will detect last-player-standing when the turn advances.
+      updatedGame = {
+        ...room.game,
+        players: updatedPlayers,
+      };
+    }
+  }
+
+  return {
+    ok: true,
+    room: {
+      ...room,
+      game: updatedGame,
       stateVersion: room.stateVersion + 1,
       updatedAt: Date.now(),
     },
