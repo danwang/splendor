@@ -460,7 +460,7 @@ const ChipStrip = ({
       <span
         key={`chip-${color}`}
         ref={targetRefByColor?.[color]}
-        className={`${counts[color] > 0 ? '' : 'opacity-25'} ${
+        className={`transition-opacity duration-300 ${counts[color] > 0 ? '' : 'opacity-25'} ${
           immediateHighlightedColors.includes(color) ? 'receive-bulge' : ''
         } ${
           highlightedColors.includes(color) ? 'receive-bulge' : ''
@@ -1402,7 +1402,7 @@ export const RoomScene = ({
                   ref={(node) => {
                     targetNodeRefs.current[animationTargets.bankChip(color)] = node;
                   }}
-                  className={`${color === 'gold' ? 'ml-2' : ''} ${
+                  className={`transition-opacity duration-300 ${game.bank[color] > 0 ? '' : 'opacity-25'} ${color === 'gold' ? 'ml-2' : ''} ${
                     sourceChipBulges.bankColors.includes(color) ? 'receive-bulge' : ''
                   } ${
                     animationState.changedBankColors.includes(color) ? 'receive-bulge' : ''
@@ -1560,8 +1560,11 @@ export const RoomScene = ({
     const manualSelectedCount = totalSelectedPayment(purchaseSelection);
     const manualPaymentValid =
       activePlayer !== null && isValidPaymentForCard(activePlayer, card, purchaseSelection);
-    const totalEffectiveCost = tokenColorOrder.reduce((sum, color) => sum + effectiveCost[color], 0);
     const goldNeeded = viewerAutoPayment?.gold ?? 0;
+    const displayCost = viewerAutoPayment
+      ? viewerAutoPayment.tokens
+      : effectiveCost;
+    const totalEffectiveCost = tokenColorOrder.reduce((sum, color) => sum + effectiveCost[color], 0);
 
     const addPaymentToken = (color: GemColor) => {
       if (!activePlayer) {
@@ -1629,12 +1632,12 @@ export const RoomScene = ({
               <p className="text-xs uppercase tracking-[0.24em] text-stone-500">Your effective cost</p>
               <div className="flex flex-wrap gap-2">
                 {tokenColorOrder
-                  .filter((color) => effectiveCost[color] > 0)
+                  .filter((color) => displayCost[color] > 0)
                   .map((color) => (
                     <GemPip
                       key={`effective-cost-${card.id}-${color}`}
                       color={color}
-                      count={effectiveCost[color]}
+                      count={displayCost[color]}
                       size="sm"
                     />
                   ))}
@@ -1836,7 +1839,7 @@ export const RoomScene = ({
             return (
               <button
                 key={`bank-select-${color}`}
-                className={`relative rounded-full px-1.5 py-1 ${selectedCount > 0 ? `outline-4 outline-offset-2 ${tokenRingStyles[color]}` : ''}`}
+                className={`relative rounded-full px-1.5 py-1 transition-opacity duration-300 ${(game?.bank[color] ?? 0) === 0 ? 'opacity-25' : ''} ${selectedCount > 0 ? `outline-4 outline-offset-2 ${tokenRingStyles[color]}` : ''}`}
                 disabled={(game?.bank[color] ?? 0) === 0 || !canSubmitRealtimeMoves}
                 onClick={() => toggleBankColor(color)}
                 type="button"
@@ -2137,6 +2140,14 @@ export const RoomScene = ({
   };
 
   const renderActionSheetContent = () => {
+    if (selection?.type === 'menu') {
+      return {
+        eyebrow: 'Room',
+        title: 'Menu',
+        content: renderMenuSheet(),
+      };
+    }
+
     if (!game || !interaction) {
       return null;
     }
@@ -2162,14 +2173,6 @@ export const RoomScene = ({
         eyebrow: 'Player',
         title: selectedPlayer.identity.displayName,
         content: renderPlayerSheet(selectedPlayer),
-      };
-    }
-
-    if (selection?.type === 'menu') {
-      return {
-        eyebrow: 'Room',
-        title: 'Menu',
-        content: renderMenuSheet(),
       };
     }
 
