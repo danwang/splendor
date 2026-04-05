@@ -1561,9 +1561,6 @@ export const RoomScene = ({
     const manualPaymentValid =
       activePlayer !== null && isValidPaymentForCard(activePlayer, card, purchaseSelection);
     const goldNeeded = viewerAutoPayment?.gold ?? 0;
-    const displayCost = viewerAutoPayment
-      ? viewerAutoPayment.tokens
-      : effectiveCost;
     const totalEffectiveCost = tokenColorOrder.reduce((sum, color) => sum + effectiveCost[color], 0);
 
     const addPaymentToken = (color: GemColor) => {
@@ -1632,24 +1629,16 @@ export const RoomScene = ({
               <p className="text-xs uppercase tracking-[0.24em] text-stone-500">Your effective cost</p>
               <div className="flex flex-wrap gap-2">
                 {tokenColorOrder
-                  .filter((color) => displayCost[color] > 0)
+                  .filter((color) => effectiveCost[color] > 0)
                   .map((color) => (
                     <GemPip
                       key={`effective-cost-${card.id}-${color}`}
                       color={color}
-                      count={displayCost[color]}
+                      count={effectiveCost[color]}
                       size="sm"
                     />
                   ))}
-                {goldNeeded > 0 ? (
-                  <GemPip
-                    key={`effective-cost-${card.id}-gold`}
-                    color="gold"
-                    count={goldNeeded}
-                    size="sm"
-                  />
-                ) : null}
-                {totalEffectiveCost === 0 && goldNeeded === 0 ? (
+                {totalEffectiveCost === 0 ? (
                   <span className="text-sm text-stone-400">Free with discounts</span>
                 ) : null}
               </div>
@@ -1773,7 +1762,11 @@ export const RoomScene = ({
             }}
             type="button"
           >
-            {manualSelectedCount > 0 ? 'Buy' : 'Auto-buy'}
+            {manualSelectedCount > 0
+              ? 'Buy'
+              : goldNeeded > 0
+                ? `Auto-buy (${goldNeeded} gold)`
+                : 'Auto-buy'}
           </button>
           {source === 'market' ? (
             <button
