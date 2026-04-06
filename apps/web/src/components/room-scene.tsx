@@ -2133,15 +2133,15 @@ export const RoomScene = ({
   };
 
   const renderActionSheetContent = () => {
-    if (selection?.type === 'menu') {
-      return {
-        eyebrow: 'Room',
-        title: 'Menu',
-        content: renderMenuSheet(),
-      };
-    }
-
     if (!game || !interaction) {
+      if (selection?.type === 'menu') {
+        return {
+          eyebrow: 'Room',
+          title: 'Menu',
+          content: renderMenuSheet(),
+        };
+      }
+
       return null;
     }
 
@@ -2158,6 +2158,14 @@ export const RoomScene = ({
         title: 'Choose noble',
         subtitle: 'Resolve the noble step before the turn can pass.',
         content: renderNobleSheet(),
+      };
+    }
+
+    if (selection?.type === 'menu') {
+      return {
+        eyebrow: 'Room',
+        title: 'Menu',
+        content: renderMenuSheet(),
       };
     }
 
